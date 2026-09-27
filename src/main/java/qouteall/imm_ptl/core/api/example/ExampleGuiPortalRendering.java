@@ -1,12 +1,16 @@
 package qouteall.imm_ptl.core.api.example;
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
@@ -22,7 +26,6 @@ import qouteall.imm_ptl.core.api.PortalAPI;
 import qouteall.imm_ptl.core.chunk_loading.ChunkLoader;
 import qouteall.imm_ptl.core.chunk_loading.DimensionalChunkPos;
 import qouteall.imm_ptl.core.render.GuiPortalRendering;
-import qouteall.imm_ptl.core.render.MyRenderHelper;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 import qouteall.q_misc_util.api.McRemoteProcedureCall;
 import qouteall.q_misc_util.my_util.DQuaternion;
@@ -58,14 +61,14 @@ public class ExampleGuiPortalRendering {
      * The Framebuffer that the GUI portal is going to render onto
      */
     @Environment(EnvType.CLIENT)
-    private static RenderTarget frameBuffer;
-    
+    private static TextureTarget frameBuffer;
+
     /**
      * A weak hash map storing ChunkLoader objects for each players
      */
     private static final WeakHashMap<ServerPlayer, ChunkLoader>
         chunkLoaderMap = new WeakHashMap<>();
-    
+
     /**
      * Remove the GUI portal chunk loader for a player
      */
@@ -75,21 +78,21 @@ public class ExampleGuiPortalRendering {
             PortalAPI.removeChunkLoaderForPlayer(player, chunkLoader);
         }
     }
-    
+
     public static void onCommandExecuted(ServerPlayer player, ServerLevel world, Vec3 pos) {
         removeChunkLoaderFor(player);
-        
+
         ChunkLoader chunkLoader = new ChunkLoader(
             new DimensionalChunkPos(
-                world.dimension(), new ChunkPos(BlockPos.containing(pos))
+                world.dimension(), ChunkPos.containing(BlockPos.containing(pos))
             ),
             8
         );
-        
+
         // Add the per-player additional chunk loader
         PortalAPI.addChunkLoaderForPlayer(player, chunkLoader);
         chunkLoaderMap.put(player, chunkLoader);
-        
+
         // Tell the client to open the screen
         McRemoteProcedureCall.tellClientToInvoke(
             player,
@@ -99,7 +102,7 @@ public class ExampleGuiPortalRendering {
         );
         /**{@link RemoteCallables#clientActivateExampleGuiPortal(ResourceKey, Vec3)}*/
     }
-    
+
     public static class RemoteCallables {
         @Environment(EnvType.CLIENT)
         public static void clientActivateExampleGuiPortal(
@@ -109,47 +112,50 @@ public class ExampleGuiPortalRendering {
             if (frameBuffer == null) {
                 // the framebuffer size doesn't matter here
                 // because it will be automatically resized when rendering
-                frameBuffer = new TextureTarget(2, 2, true, true);
+                frameBuffer = new TextureTarget(
+                    "ImmPtl GUI Portal Example", 2, 2,
+                    GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT
+                );
             }
-            
-            Minecraft.getInstance().setScreen(new GuiPortalScreen(dimension, position));
+
+            Minecraft.getInstance().gui.setScreen(new GuiPortalScreen(dimension, position));
         }
-        
+
         public static void serverRemoveChunkLoader(ServerPlayer player) {
             removeChunkLoaderFor(player);
         }
     }
-    
+
     @Environment(EnvType.CLIENT)
     public static class GuiPortalScreen extends Screen {
-        
+
         private final ResourceKey<Level> viewingDimension;
-        
+
         private final Vec3 viewingPosition;
-        
+
         public GuiPortalScreen(ResourceKey<Level> viewingDimension, Vec3 viewingPosition) {
             super(Component.literal("GUI Portal Example"));
             this.viewingDimension = viewingDimension;
             this.viewingPosition = viewingPosition;
         }
-        
+
         @Override
         public void onClose() {
             super.onClose();
-            
+
             // Tell the server to remove the additional chunk loader
             McRemoteProcedureCall.tellServerToInvoke(
                 "qouteall.imm_ptl.core.api.example.ExampleGuiPortalRendering.RemoteCallables.serverRemoveChunkLoader"
             );
         }
-        
+
         @Override
-        public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float delta) {
-            super.render(guiGraphics, mouseX, mouseY, delta);
-            
+        public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+            super.extractRenderState(graphics, mouseX, mouseY, delta);
+
             double t1 = CHelper.getSmoothCycles(503);
             double t2 = CHelper.getSmoothCycles(197);
-            
+
             // Determine the camera transformation
             Matrix4f cameraTransformation = new Matrix4f();
             cameraTransformation.identity();
@@ -159,12 +165,12 @@ public class ExampleGuiPortalRendering {
                     t1 * 360
                 ).toMatrix()
             );
-            
+
             // Determine the camera position
             Vec3 cameraPosition = this.viewingPosition.add(
                 new Vec3(Math.cos(t2 * 2 * Math.PI), 0, Math.sin(t2 * 2 * Math.PI)).scale(30)
             );
-            
+
             // Create the world render info
             WorldRenderInfo worldRenderInfo = new WorldRenderInfo.Builder()
                 .setWorld(ClientWorldLoader.getWorld(viewingDimension))
@@ -178,43 +184,46 @@ public class ExampleGuiPortalRendering {
                 .setDoRenderSky(false)
                 .setHasFog(false)
                 .build();
-            
+
             // Ask it to render the world into the framebuffer the next frame
             GuiPortalRendering.submitNextFrameRendering(worldRenderInfo, frameBuffer);
-            
-            // Draw the framebuffer
-            int h = minecraft.getWindow().getHeight();
-            int w = minecraft.getWindow().getWidth();
-            MyRenderHelper.drawFramebufferWithBounds(
-                frameBuffer,
-                true, // enable alpha blend
-                false, // don't modify alpha
-                (int) (w * 0.2f), (int) (w * 0.8f),
-                (int) (h * 0.2f), (int) (h * 0.8f)
-            );
-            
-            guiGraphics.drawCenteredString(
-                this.font, this.title, this.width / 2, 70, 16777215
+
+            // Draw the framebuffer, scaled into the middle of the screen (in GUI coordinates).
+            // Without the sky, the background has 0 alpha, so it's transparent.
+            // Render targets are bottom-up, so v is flipped.
+            GpuTextureView textureView = frameBuffer.getColorTextureView();
+            if (textureView != null) {
+                graphics.blit(
+                    textureView,
+                    RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR),
+                    (int) (this.width * 0.2f), (int) (this.height * 0.2f),
+                    (int) (this.width * 0.8f), (int) (this.height * 0.8f),
+                    0.0f, 1.0f, 1.0f, 0.0f
+                );
+            }
+
+            graphics.centeredText(
+                this.font, this.title, this.width / 2, 70, 0xFFFFFFFF
             );
         }
-        
+
         @Override
         public boolean isPauseScreen() {
             return false;
         }
-        
+
         // close when E is pressed
         @Override
-        public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-            if (super.keyPressed(keyCode, scanCode, modifiers)) {
+        public boolean keyPressed(KeyEvent event) {
+            if (super.keyPressed(event)) {
                 return true;
             }
-            
-            if (minecraft.options.keyInventory.matches(keyCode, scanCode)) {
+
+            if (minecraft.options.keyInventory.matches(event)) {
                 this.onClose();
                 return true;
             }
-            
+
             return false;
         }
     }

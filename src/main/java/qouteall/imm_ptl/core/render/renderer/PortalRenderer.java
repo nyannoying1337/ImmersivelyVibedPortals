@@ -1,34 +1,22 @@
 package qouteall.imm_ptl.core.render.renderer;
 
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.event.EventFactory;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.culling.Frustum;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
-import qouteall.imm_ptl.core.CHelper;
-import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.IPCGlobal;
 import qouteall.imm_ptl.core.IPGlobal;
-import qouteall.imm_ptl.core.compat.IPModInfoChecking;
-import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
 import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
-import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
-import qouteall.imm_ptl.core.render.MyRenderHelper;
 import qouteall.imm_ptl.core.render.TransformationManager;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
-import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 import qouteall.q_misc_util.Helper;
 
-import java.util.Comparator;
-import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -52,30 +40,14 @@ public abstract class PortalRenderer {
         );
     
     public static final Minecraft client = Minecraft.getInstance();
-    
-    public abstract void onBeforeTranslucentRendering(Matrix4f modelView);
-    
-    public abstract void onAfterTranslucentRendering(Matrix4f modelView);
-    
-    // will be called when rendering portal
-    public abstract void onHandRenderingEnded();
-    
-    // will be called when rendering portal
-    public void onBeforeHandRendering(Matrix4f modelView) {}
-    
-    // this will NOT be called when rendering portal
-    public abstract void prepareRendering();
-    
-    // this will NOT be called when rendering portal
-    public abstract void finishRendering();
-    
-    // this will be called when rendering portal entities
-    public abstract void renderPortalInEntityRenderer(Portal portal);
-    
-    // return true to skip framebuffer clear
-    // this will also be called in outer world rendering
-    public abstract boolean replaceFrameBufferClearing();
-    
+
+    // In 1.21.1 the renderer subclasses (stencil, Iris compat...) were driven by instance hooks
+    // (translucent/hand rendering, framebuffer clearing, portal entity rendering).
+    // In 26.3 portal views are rendered by PortalViewRenderer and portal surfaces by PortalEntityRenderer,
+    // so those hooks are gone (see docs/rendering-26.3.md).
+    // TODO(26.3): Iris support. The renderer switching (IPCGlobal.renderer, switchToCorrectRenderer, which also ran
+    //  IPModInfoChecking.checkShaderpack) was removed with the hooks; redo it when an Iris-compatible renderer exists.
+
     public static boolean shouldSkipRenderingPortal(Portal portal, Supplier<Frustum> frustumSupplier) {
         if (!portal.isPortalValid()) {
             return true;
@@ -212,33 +184,5 @@ public abstract class PortalRenderer {
     
     public static boolean shouldApplyScaleToModelView(Portal portal) {
         return portal.hasScaling() && portal.isFuseView();
-    }
-    
-    public void onBeginIrisTranslucentRendering(Matrix4f modelView) {}
-    
-    
-    public static void switchToCorrectRenderer() {
-        if (PortalRendering.isRendering()) {
-            //do not switch when rendering
-            return;
-        }
-        
-        
-        IPModInfoChecking.checkShaderpack();
-        
-        // In 26.3 portal views are rendered by PortalViewRenderer, independent of this.
-        // TODO(26.3): Iris support
-        switchRenderer(IPCGlobal.rendererDummy);
-    }
-    
-    private static void switchRenderer(PortalRenderer renderer) {
-        if (IPCGlobal.renderer != renderer) {
-            Helper.log("switched to renderer " + renderer.getClass());
-            IPCGlobal.renderer = renderer;
-            
-            if (IrisInterface.invoker.isShaders()) {
-                IrisInterface.invoker.reloadPipelines();
-            }
-        }
     }
 }

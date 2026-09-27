@@ -1,6 +1,5 @@
 package qouteall.imm_ptl.core.miscellaneous;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ImageWidget;
 import net.minecraft.client.gui.components.MultiLineTextWidget;
@@ -31,10 +30,7 @@ public class IPortalInitialScreen extends Screen {
     public IPortalInitialScreen(Runnable onClose) {
         super(Component.empty());
         this.onClose = onClose;
-        
-        this.minecraft = Minecraft.getInstance();
-        this.font = minecraft.font;
-        
+
         prevButton = Button.builder(
             Component.translatable("iportal.initial_screen.prev"),
             button -> onPrevious()
@@ -59,7 +55,7 @@ public class IPortalInitialScreen extends Screen {
         titleWidget = new StringWidget(
             Component.translatable("iportal.initial_screen.title"),
             font
-        ).alignCenter();
+        );
         
         contentWidget = new MultiLineTextWidget(
             Component.empty(),
@@ -112,9 +108,10 @@ public class IPortalInitialScreen extends Screen {
     @Override
     public void init() {
         contentWidget.setMaxWidth(this.width - 40);
-        pageNumberWidget.setWidth(50);
+        // StringWidget has no alignCenter() in 26.3 (text is drawn from its left edge),
+        // so size it to the widest page number text and add the spacing as cell padding.
+        pageNumberWidget.setWidth(font.width("%d / %d".formatted(PAGE_NUM, PAGE_NUM)));
         pageNumberWidget.setHeight(iKnowButton.getHeight());
-        pageNumberWidget.alignCenter();
         titleWidget.setHeight(iconWidget.getHeight());
         
         addRenderableWidget(prevButton);
@@ -137,7 +134,9 @@ public class IPortalInitialScreen extends Screen {
         
         LinearLayout footerLayout = layout.addToFooter(LinearLayout.horizontal());
         footerLayout.addChild(prevButton, footerLayout.defaultCellSetting().padding(5));
-        footerLayout.addChild(pageNumberWidget, footerLayout.defaultCellSetting().padding(5));
+        footerLayout.addChild(
+            pageNumberWidget, footerLayout.defaultCellSetting().paddingHorizontal(15).paddingVertical(5)
+        );
         footerLayout.addChild(iKnowButton, footerLayout.defaultCellSetting().padding(5));
         
         layout.arrangeElements();

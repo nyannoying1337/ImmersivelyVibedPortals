@@ -6,7 +6,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import org.jetbrains.annotations.Nullable;
-import qouteall.imm_ptl.core.compat.mixin.sodium.IESodiumWorldRenderer;
 import qouteall.imm_ptl.core.render.FrustumCuller;
 
 @Environment(EnvType.CLIENT)

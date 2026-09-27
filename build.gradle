@@ -45,6 +45,8 @@ sourceSets.main.java {
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/OnIrisPresent.java'
     exclude 'qouteall/imm_ptl/core/compat/sodium_compatibility/OnSodiumPresent.java'
     exclude 'qouteall/imm_ptl/core/compat/sodium_compatibility/SodiumRenderingContext.java'
+    // only implemented by the (excluded) Sodium mixins, and its signature uses SodiumRenderingContext
+    exclude 'qouteall/imm_ptl/core/compat/sodium_compatibility/IESodiumRenderSectionManager.java'
     exclude 'qouteall/imm_ptl/core/compat/OnGravityChangerPresent.java'
 }
 
