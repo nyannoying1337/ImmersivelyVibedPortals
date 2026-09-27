@@ -1,18 +1,12 @@
 package qouteall.imm_ptl.core.ducks;
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.RenderBuffers;
+import net.minecraft.client.renderer.extract.LevelExtractor;
 
 public interface IEMinecraftClient {
-    void ip_setFrameBuffer(RenderTarget buffer);
-    
-    Screen ip_getCurrentScreen();
-    
-    void ip_setWorldRenderer(LevelRenderer r);
-    
-    void ip_setRenderBuffers(RenderBuffers arg);
+    // In 26.3 a dimension's rendering is split into a LevelExtractor and a LevelRenderer.
+    // They are always switched together.
+    void ip_setLevelRendererAndExtractor(LevelRenderer levelRenderer, LevelExtractor levelExtractor);
     
     Thread ip_getRunningThread();
 }

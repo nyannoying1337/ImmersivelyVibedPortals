@@ -58,7 +58,6 @@ import qouteall.imm_ptl.core.platform_specific.O_O;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.render.ForceMainThreadRebuild;
 import qouteall.imm_ptl.core.render.ImmPtlViewArea;
-import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.teleportation.ClientTeleportationManager;
 import qouteall.q_misc_util.Helper;
@@ -392,7 +391,6 @@ public class ClientDebugCommand {
             .literal("reload_world_renderer")
             .executes(context -> {
                 Minecraft.getInstance().execute(() -> {
-                    ClientWorldLoader.disposeRenderHelpers();
                     Minecraft.getInstance().levelExtractor.allChanged();
                 });
                 return 0;
@@ -637,11 +635,6 @@ public class ClientDebugCommand {
             builder,
             "experimental_iris_portal_renderer",
             cond -> IPCGlobal.experimentalIrisPortalRenderer = cond
-        );
-        registerSwitchCommand(
-            builder,
-            "portal_rendering_cave_culling",
-            cond -> MyGameRenderer.enablePortalCaveCulling = cond
         );
         registerSwitchCommand(
             builder,

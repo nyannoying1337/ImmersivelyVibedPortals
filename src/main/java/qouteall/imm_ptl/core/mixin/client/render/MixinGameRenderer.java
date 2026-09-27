@@ -1,84 +1,87 @@
 package qouteall.imm_ptl.core.mixin.client.render;
 
-import net.minecraft.util.profiling.Profiler;
-import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.LightTexture;
-import org.joml.Matrix4f;
-import org.joml.Quaternionfc;
-import org.slf4j.Logger;
+import net.minecraft.client.renderer.GlobalSettingsUniform;
+import net.minecraft.client.renderer.Lightmap;
+import net.minecraft.client.renderer.LightmapRenderStateExtractor;
+import net.minecraft.client.renderer.fog.FogRenderer;
+import net.minecraft.util.profiling.Profiler;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.IPCGlobal;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.ducks.IEGameRenderer;
 import qouteall.imm_ptl.core.portal.animation.ClientPortalAnimationManagement;
 import qouteall.imm_ptl.core.portal.animation.StableClientTimer;
-import qouteall.imm_ptl.core.render.CrossPortalViewRendering;
 import qouteall.imm_ptl.core.render.GuiPortalRendering;
-import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
-import qouteall.imm_ptl.core.render.TransformationManager;
-import qouteall.imm_ptl.core.render.context_management.PortalRendering;
+import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
-import qouteall.imm_ptl.core.render.renderer.PortalRenderer;
 import qouteall.imm_ptl.core.teleportation.ClientTeleportationManager;
-import qouteall.q_misc_util.Helper;
 
 @Mixin(GameRenderer.class)
 public abstract class MixinGameRenderer implements IEGameRenderer {
     @Shadow
     @Final
     @Mutable
-    private LightTexture lightTexture;
-    
+    private Lightmap lightmap;
+
     @Shadow
-    private boolean renderHand;
+    @Final
+    private LightmapRenderStateExtractor lightmapRenderStateExtractor;
+
+    @Shadow
+    @Final
+    @Mutable
+    private FogRenderer fogRenderer;
+
     @Shadow
     @Final
     @Mutable
     private Camera mainCamera;
-    
+
+    @Shadow
+    @Final
+    private GlobalSettingsUniform globalSettingsUniform;
+
     @Shadow
     @Final
     private Minecraft minecraft;
-    
+
     @Shadow
-    private boolean panoramicMode;
-    
-    @Shadow
-    public abstract void resetProjectionMatrix(Matrix4f matrix4f);
-    
-    @Shadow
-    protected abstract void bobView(PoseStack matrices, float f);
-    
-    @Shadow @Final private static Logger LOGGER;
-    
-    @Inject(method = "render", at = @At("HEAD"))
-    private void onFarBeforeRendering(
-        DeltaTracker deltaTracker, boolean renderWorldIn, CallbackInfo ci
-    ) {
+    protected abstract void extractCamera(DeltaTracker deltaTracker, float worldPartialTicks);
+
+    @Unique
+    private @Nullable RenderTarget ip_mainRenderTargetOverride;
+
+    @Unique
+    private static boolean ip_isRenderingHand = false;
+
+    /**
+     * In 26.3 the frame is update -> extract -> render.
+     * Portal animation and teleportation must be handled before the camera is updated,
+     * so that the extracted render state is consistent with the teleported player.
+     */
+    @Inject(method = "update", at = @At("HEAD"))
+    private void onBeforeUpdate(DeltaTracker deltaTracker, CallbackInfo ci) {
         Profiler.get().push("ip_pre_total_render");
         IPGlobal.PRE_TOTAL_RENDER_TASK_LIST.processTasks();
         Profiler.get().pop();
-        if (minecraft.level == null) {
-            return;
-        }
-        if (!renderWorldIn) { // when respawning, it will runTick and execute rendering
+        if (minecraft.level == null || minecraft.player == null) {
             return;
         }
         Profiler.get().push("ip_pre_render");
@@ -95,119 +98,64 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
             MyRenderHelper.earlyRemoteUpload();
         }
         Profiler.get().pop();
-        
+
         RenderStates.frameIndex++;
     }
-    
-    //before rendering world (not triggered when rendering portal)
-    @Inject(
-        method = "render",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;)V"
-        )
-    )
-    private void onBeforeRenderingCenter(
-        DeltaTracker deltaTracker, boolean bl, CallbackInfo ci
-    ) {
-        PortalRenderer.switchToCorrectRenderer();
-        
-        IPCGlobal.renderer.prepareRendering();
+
+    /**
+     * Portal views are rendered before the main view is extracted (see docs/rendering-26.3.md).
+     * The main camera has been updated by {@link GameRenderer#update} at this point.
+     */
+    @Inject(method = "extract", at = @At("HEAD"))
+    private void onBeforeExtract(DeltaTracker deltaTracker, boolean advanceGameTime, CallbackInfo ci) {
+        if (minecraft.isGameLoadFinished() && advanceGameTime && minecraft.level != null) {
+            Profiler.get().push("ip_portal_views");
+            PortalViewRenderer.renderPortalViews(deltaTracker);
+            Profiler.get().pop();
+        }
     }
-    
-    //after rendering world (not triggered when rendering portal)
-    @Inject(
-        method = "render",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;)V",
-            shift = At.Shift.AFTER
-        )
-    )
-    private void onAfterRenderingCenter(
-        DeltaTracker deltaTracker, boolean bl, CallbackInfo ci
-    ) {
-        IPCGlobal.renderer.finishRendering();
-        
+
+    @Inject(method = "render", at = @At("RETURN"))
+    private void onAfterRender(CallbackInfo ci) {
         RenderStates.onTotalRenderEnd();
-        
+
         GuiPortalRendering._onGameRenderEnd();
-        
+
         if (IPCGlobal.lateClientLightUpdate) {
             Profiler.get().push("ip_late_update_light");
             MyRenderHelper.lateUpdateLight();
             Profiler.get().pop();
         }
     }
-    
-    //special rendering in third person view
-    @Redirect(
-        method = "render",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;)V"
-        )
-    )
-    private void redirectRenderingWorld(
-        GameRenderer gameRenderer, DeltaTracker deltaTracker
-    ) {
-        if (CrossPortalViewRendering.renderCrossPortalView()) {
+
+    @Inject(method = "mainRenderTarget", at = @At("HEAD"), cancellable = true)
+    private void onGetMainRenderTarget(CallbackInfoReturnable<RenderTarget> cir) {
+        if (ip_mainRenderTargetOverride != null) {
+            cir.setReturnValue(ip_mainRenderTargetOverride);
+        }
+    }
+
+    // no hand/HUD in portal views
+    @Inject(method = "render3dHud", at = @At("HEAD"), cancellable = true)
+    private void onRender3dHud(CallbackInfo ci) {
+        if (PortalViewRenderer.isRenderingPortalView()) {
+            ci.cancel();
             return;
         }
-        
-        gameRenderer.renderLevel(deltaTracker);
+        ip_isRenderingHand = true;
     }
-    
-    @Inject(method = "renderLevel", at = @At("TAIL"))
-    private void onRenderCenterEnded(
-        DeltaTracker deltaTracker, CallbackInfo ci
-    ) {
-        IPCGlobal.renderer.onHandRenderingEnded();
+
+    @Inject(method = "render3dHud", at = @At("RETURN"))
+    private void onRender3dHudEnd(CallbackInfo ci) {
+        ip_isRenderingHand = false;
     }
-    
-    @WrapOperation(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/LevelRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;ZLnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/GameRenderer;Lnet/minecraft/client/renderer/LightTexture;Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V"
-        )
-    )
-    private void wrapRenderLevel(
-        LevelRenderer instance, DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f modelView, Matrix4f projection, Operation<Void> original
-    ) {
-        original.call(
-            instance, deltaTracker, bl, camera, gameRenderer, lightTexture, modelView, projection
-        );
-        
-        IPCGlobal.renderer.onBeforeHandRendering(modelView);
-    }
-    
+
     //resize all world renderers when resizing window
-    @Inject(method = "Lnet/minecraft/client/renderer/GameRenderer;resize(II)V", at = @At("RETURN"))
-    private void onOnResized(int int_1, int int_2, CallbackInfo ci) {
-        if (ClientWorldLoader.getIsInitialized()) {
-            ClientWorldLoader.WORLD_RENDERER_MAP.values().stream()
-                .filter(
-                    worldRenderer -> worldRenderer != minecraft.levelRenderer
-                )
-                .forEach(
-                    worldRenderer -> worldRenderer.resize(int_1, int_2)
-                );
-        }
+    @Inject(method = "resize", at = @At("RETURN"))
+    private void onResized(int width, int height, CallbackInfo ci) {
+        ClientWorldLoader._onResize(width, height);
     }
-    
-    private static boolean portal_isRenderingHand = false;
-    
-    @Inject(method = "renderItemInHand", at = @At("HEAD"))
-    private void onRenderHandBegins(Camera camera, float f, Matrix4f matrix4f, CallbackInfo ci) {
-        portal_isRenderingHand = true;
-    }
-    
-    @Inject(method = "renderItemInHand", at = @At("RETURN"))
-    private void onRenderHandEnds(Camera camera, float f, Matrix4f matrix4f, CallbackInfo ci) {
-        portal_isRenderingHand = false;
-    }
-    
+
     // not using ModifyArgs because ModifyArgs seems broken on Forge
     @ModifyArg(
         method = "bobView",
@@ -215,124 +163,74 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
         index = 0
     )
     private float modifyBobViewTranslateX(float f) {
-        if (portal_isRenderingHand) {
-            return f;
-        }
-        else {
-            return (float) (f * RenderStates.getViewBobbingOffsetMultiplier());
-        }
+        return ip_isRenderingHand ? f : (float) (f * RenderStates.getViewBobbingOffsetMultiplier());
     }
-    
+
     @ModifyArg(
         method = "bobView",
         at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vertex/PoseStack;translate(FFF)V"),
         index = 1
     )
     private float modifyBobViewTranslateY(float f) {
-        if (portal_isRenderingHand) {
-            return f;
-        }
-        else {
-            return (float) (f * RenderStates.getViewBobbingOffsetMultiplier());
-        }
+        return ip_isRenderingHand ? f : (float) (f * RenderStates.getViewBobbingOffsetMultiplier());
     }
-    
+
     @ModifyArg(
         method = "bobView",
         at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vertex/PoseStack;translate(FFF)V"),
         index = 2
     )
     private float modifyBobViewTranslateZ(float f) {
-        if (portal_isRenderingHand) {
-            return f;
-        }
-        else {
-            return (float) (f * RenderStates.getViewBobbingOffsetMultiplier());
-        }
+        return ip_isRenderingHand ? f : (float) (f * RenderStates.getViewBobbingOffsetMultiplier());
     }
 
+    @Override
+    public Lightmap ip_getLightmap() {
+        return lightmap;
+    }
 
-//    @Redirect(
-//        method = "Lnet/minecraft/client/renderer/GameRenderer;bobView(Lcom/mojang/blaze3d/vertex/PoseStack;F)V",
-//        at = @At(
-//            value = "INVOKE",
-//            target = "Lcom/mojang/blaze3d/vertex/PoseStack;translate(FFF)V"
-//        )
-//    )
-//    private void redirectBobViewTranslate(PoseStack matrixStack, float x, float y, float z) {
-//        if (portal_isRenderingHand) {
-//            matrixStack.translate(x, y, z);
-//        }
-//        else {
-//            double multiplier = RenderStates.getViewBobbingOffsetMultiplier();
-//            matrixStack.translate(
-//                x * multiplier, y * multiplier, z * multiplier
-//            );
-//        }
-//    }
-    
-    // make sure that the portal rendering basic projection matrix is right
-    // the basic projection matrix does not contain view bobbing
-    @Redirect(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/GameRenderer;getProjectionMatrix(D)Lorg/joml/Matrix4f;",
-            ordinal = 0
-        )
-    )
-    private Matrix4f redirectGetBasicProjectionMatrix(GameRenderer instance, double fov) {
-        if (PortalRendering.isRendering()) {
-            if (RenderStates.basicProjectionMatrix != null) {
-                // replace the basic projection matrix
-                // copy to avoid unwanted modification
-                return new Matrix4f(RenderStates.basicProjectionMatrix);
-            }
-            else {
-                LOGGER.error("[iPortal] Projection matrix state abnormal");
-            }
-        }
-        
-        Matrix4f result = instance.getProjectionMatrix(fov);
-        // copy to avoid unwanted modification
-        RenderStates.basicProjectionMatrix = new Matrix4f(result);
-        
-        return result;
+    @Override
+    public void ip_setLightmap(Lightmap lightmap) {
+        this.lightmap = lightmap;
     }
-    
-    @WrapOperation(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lorg/joml/Matrix4f;rotation(Lorg/joml/Quaternionfc;)Lorg/joml/Matrix4f;",
-            remap = false
-        )
-    )
-    private Matrix4f wrapCameraTransformation(
-        Matrix4f instance, Quaternionfc quat, Operation<Matrix4f> original
-    ) {
-        Matrix4f r = original.call(instance, quat);
-        return TransformationManager.processTransformation(mainCamera, r);
+
+    @Override
+    public LightmapRenderStateExtractor ip_getLightmapRenderStateExtractor() {
+        return lightmapRenderStateExtractor;
+    }
+
+    @Override
+    public FogRenderer ip_getFogRenderer() {
+        return fogRenderer;
+    }
+
+    @Override
+    public void ip_setFogRenderer(FogRenderer fogRenderer) {
+        this.fogRenderer = fogRenderer;
+    }
+
+    @Override
+    public void ip_setCamera(Camera camera) {
+        this.mainCamera = camera;
+    }
+
+    @Override
+    public GlobalSettingsUniform ip_getGlobalSettingsUniform() {
+        return globalSettingsUniform;
+    }
+
+    @Override
+    public void ip_setMainRenderTargetOverride(@Nullable RenderTarget target) {
+        this.ip_mainRenderTargetOverride = target;
+    }
+
+    @Override
+    public @Nullable RenderTarget ip_getMainRenderTargetOverride() {
+        return ip_mainRenderTargetOverride;
     }
     
     @Override
-    public void ip_setLightmapTextureManager(LightTexture manager) {
-        lightTexture = manager;
+    public void ip_extractCamera(DeltaTracker deltaTracker, float worldPartialTicks) {
+        extractCamera(deltaTracker, worldPartialTicks);
     }
-    
-    @Override
-    public boolean ip_getDoRenderHand() {
-        return renderHand;
-    }
-    
-    @Override
-    public void ip_setCamera(Camera camera_) {
-        mainCamera = camera_;
-    }
-    
-    @Override
-    public void ip_setIsRenderingPanorama(boolean cond) {
-        panoramicMode = cond;
-    }
-    
 }

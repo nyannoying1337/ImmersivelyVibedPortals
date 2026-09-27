@@ -33,8 +33,6 @@ import qouteall.imm_ptl.core.compat.GravityChangerInterface;
 import qouteall.imm_ptl.core.ducks.IEAbstractClientPlayer;
 import qouteall.imm_ptl.core.ducks.IEClientPlayNetworkHandler;
 import qouteall.imm_ptl.core.ducks.IEEntity;
-import qouteall.imm_ptl.core.ducks.IEGameRenderer;
-import qouteall.imm_ptl.core.ducks.IEMinecraftClient;
 import qouteall.imm_ptl.core.ducks.IEParticleManager;
 import qouteall.imm_ptl.core.network.ImmPtlNetworking;
 import qouteall.imm_ptl.core.network.PacketRedirectionClient;
@@ -44,7 +42,6 @@ import qouteall.imm_ptl.core.portal.PortalExtension;
 import qouteall.imm_ptl.core.portal.animation.ClientPortalAnimationManagement;
 import qouteall.imm_ptl.core.portal.animation.StableClientTimer;
 import qouteall.imm_ptl.core.render.FrontClipping;
-import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.TransformationManager;
 import qouteall.imm_ptl.core.render.context_management.FogRendererContext;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
@@ -421,7 +418,6 @@ public class ClientTeleportationManager {
         isTeleportingTick = true;
         isTeleportingFrame = true;
         
-        MyGameRenderer.vanillaTerrainSetupOverride = 1;
     }
     
     
@@ -450,7 +446,6 @@ public class ClientTeleportationManager {
         lastPlayerEyePos = null;
         
         RenderStates.updatePreRenderInfo(RenderStates.getPartialTick());
-        MyGameRenderer.vanillaTerrainSetupOverride = 1;
     }
     
     /**
@@ -483,13 +478,10 @@ public class ClientTeleportationManager {
         toWorld.addEntity(player);
         ((IEAbstractClientPlayer) player).ip_setClientLevel(toWorld);
         
-        IEGameRenderer gameRenderer = (IEGameRenderer) Minecraft.getInstance().gameRenderer;
-        gameRenderer.ip_setLightmapTextureManager(ClientWorldLoader
-            .getDimensionRenderHelper(toDimension).lightmapTexture);
-        
         client.level = toWorld;
-        ((IEMinecraftClient) client).ip_setWorldRenderer(
-            ClientWorldLoader.getWorldRenderer(toDimension)
+        // switch the LevelRenderer, LevelExtractor and lightmap to the new dimension's
+        ClientWorldLoader.switchClientRenderingTo(
+            ClientWorldLoader.getDimensionRenderHelper(toDimension)
         );
         
         if (client.particleEngine != null) {

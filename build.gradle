@@ -40,6 +40,8 @@ sourceSets.main.java {
     exclude 'qouteall/imm_ptl/core/compat/mixin/flywheel/**'
     exclude 'qouteall/imm_ptl/core/compat/mixin/cardinal_comp/**'
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/ExperimentalIrisPortalRenderer.java'
+    exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/IrisPortalRenderer.java'
+    exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/IrisCompatibilityPortalRenderer.java'
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/OnIrisPresent.java'
     exclude 'qouteall/imm_ptl/core/compat/sodium_compatibility/OnSodiumPresent.java'
     exclude 'qouteall/imm_ptl/core/compat/sodium_compatibility/SodiumRenderingContext.java'

@@ -1,11 +1,8 @@
 package qouteall.imm_ptl.core.render.renderer;
 
-import com.mojang.blaze3d.platform.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.event.EventFactory;
-import net.minecraft.client.GraphicsStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -19,14 +16,10 @@ import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.IPCGlobal;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.IPModInfoChecking;
-import qouteall.imm_ptl.core.compat.iris_compatibility.ExperimentalIrisPortalRenderer;
-import qouteall.imm_ptl.core.compat.iris_compatibility.IrisCompatibilityPortalRenderer;
 import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
-import qouteall.imm_ptl.core.compat.iris_compatibility.IrisPortalRenderer;
 import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
-import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
 import qouteall.imm_ptl.core.render.TransformationManager;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
@@ -83,46 +76,7 @@ public abstract class PortalRenderer {
     // this will also be called in outer world rendering
     public abstract boolean replaceFrameBufferClearing();
     
-    protected List<Portal> getPortalsToRender(Matrix4f modelView) {
-        Supplier<Frustum> frustumSupplier = Helper.cached(() -> {
-            Frustum frustum = new Frustum(
-                modelView,
-                RenderSystem.getProjectionMatrix()
-            );
-            
-            Vec3 cameraPos = client.gameRenderer.getMainCamera().getPosition();
-            frustum.prepare(cameraPos.x, cameraPos.y, cameraPos.z);
-            
-            return frustum;
-        });
-        
-        ObjectArrayList<Portal> renderables = new ObjectArrayList<>();
-        
-        ClientLevel world = client.level;
-        assert world != null;
-        List<Portal> globalPortals = GlobalPortalStorage.getGlobalPortals(world);
-        for (Portal globalPortal : globalPortals) {
-            if (!shouldSkipRenderingPortal(globalPortal, frustumSupplier)) {
-                renderables.add(globalPortal);
-            }
-        }
-        
-        world.entitiesForRendering().forEach(e -> {
-            if (e instanceof Portal portal) {
-                if (!shouldSkipRenderingPortal(portal, frustumSupplier)) {
-                    renderables.add(portal);
-                }
-            }
-        });
-        
-        Vec3 cameraPos = CHelper.getCurrentCameraPos();
-        renderables.sort(Comparator.comparingDouble(
-            e -> e.getDistanceToNearestPointInPortal(cameraPos)
-        ));
-        return renderables;
-    }
-    
-    private static boolean shouldSkipRenderingPortal(Portal portal, Supplier<Frustum> frustumSupplier) {
+    public static boolean shouldSkipRenderingPortal(Portal portal, Supplier<Frustum> frustumSupplier) {
         if (!portal.isPortalValid()) {
             return true;
         }
@@ -196,43 +150,7 @@ public abstract class PortalRenderer {
         return range;
     }
     
-    protected final void renderPortalContent(
-        Portal portal
-    ) {
-        if (PortalRendering.getPortalLayer() > PortalRendering.getMaxPortalLayer()) {
-            return;
-        }
-        
-        ClientLevel newWorld = ClientWorldLoader.getWorld(portal.getDestDim());
-        
-        PortalRendering.onBeginPortalWorldRendering();
-        
-        int renderDistance = getPortalRenderDistance(portal);
-        
-        invokeWorldRendering(
-            new WorldRenderInfo.Builder()
-                .setWorld(newWorld)
-                .setCameraPos(PortalRendering.getRenderingCameraPos())
-                .setCameraTransformation(portal.getAdditionalCameraTransformation())
-                .setOverwriteCameraTransformation(false)
-                .setDescription(portal.getDiscriminator())
-                .setRenderDistance(renderDistance)
-                .setDoRenderHand(false)
-                .setEnableViewBobbing(true)
-                .setDoRenderSky(!portal.isFuseView())
-                .build()
-        );
-        
-        PortalRendering.onEndPortalWorldRendering();
-        
-        GlStateManager._enableDepthTest();
-        
-        MyRenderHelper.restoreViewPort();
-        
-        
-    }
-    
-    private static int getPortalRenderDistance(Portal portal) {
+    public static int getPortalRenderDistance(Portal portal) {
         int mcRenderDistance = client.options.getEffectiveRenderDistance();
         
         if (portal.getScale() > 2) {
@@ -246,15 +164,6 @@ public abstract class PortalRenderer {
             return mcRenderDistance / 3;
         }
         return mcRenderDistance;
-    }
-    
-    public void invokeWorldRendering(
-        WorldRenderInfo worldRenderInfo
-    ) {
-        MyGameRenderer.renderWorldNew(
-            worldRenderInfo,
-            Runnable::run
-        );
     }
     
     @Nullable
@@ -307,7 +216,6 @@ public abstract class PortalRenderer {
     
     public void onBeginIrisTranslucentRendering(Matrix4f modelView) {}
     
-    private static boolean fabulousWarned = false;
     
     public static void switchToCorrectRenderer() {
         if (PortalRendering.isRendering()) {
@@ -315,38 +223,12 @@ public abstract class PortalRenderer {
             return;
         }
         
-        if (Minecraft.getInstance().options.graphicsMode().get() == GraphicsStatus.FABULOUS) {
-            if (!fabulousWarned) {
-                fabulousWarned = true;
-                CHelper.printChat(Component.translatable("imm_ptl.fabulous_warning"));
-            }
-        }
         
         IPModInfoChecking.checkShaderpack();
         
-        if (IrisInterface.invoker.isIrisPresent()) {
-            if (IrisInterface.invoker.isShaders()) {
-                if (IPCGlobal.experimentalIrisPortalRenderer) {
-                    switchRenderer(ExperimentalIrisPortalRenderer.instance);
-                    return;
-                }
-                
-                switch (IPGlobal.renderMode) {
-                    case normal -> switchRenderer(IrisPortalRenderer.instance);
-                    case compatibility -> switchRenderer(IrisCompatibilityPortalRenderer.instance);
-                    case debug -> switchRenderer(IrisCompatibilityPortalRenderer.debugModeInstance);
-                    case none -> switchRenderer(IPCGlobal.rendererDummy);
-                }
-                return;
-            }
-        }
-        
-        switch (IPGlobal.renderMode) {
-            case normal -> switchRenderer(IPCGlobal.rendererUsingStencil);
-            case compatibility -> switchRenderer(IPCGlobal.rendererUsingFrameBuffer);
-            case debug -> switchRenderer(IPCGlobal.rendererDebug);
-            case none -> switchRenderer(IPCGlobal.rendererDummy);
-        }
+        // In 26.3 portal views are rendered by PortalViewRenderer, independent of this.
+        // TODO(26.3): Iris support
+        switchRenderer(IPCGlobal.rendererDummy);
     }
     
     private static void switchRenderer(PortalRenderer renderer) {

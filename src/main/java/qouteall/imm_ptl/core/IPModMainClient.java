@@ -22,13 +22,11 @@ import qouteall.imm_ptl.core.render.ForceMainThreadRebuild;
 import qouteall.imm_ptl.core.render.GuiPortalRendering;
 import qouteall.imm_ptl.core.render.ImmPtlViewArea;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
-import qouteall.imm_ptl.core.render.ShaderCodeTransformation;
+import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.VisibleSectionDiscovery;
 import qouteall.imm_ptl.core.render.context_management.CloudContext;
 import qouteall.imm_ptl.core.render.optimization.GLResourceCache;
 import qouteall.imm_ptl.core.render.optimization.SharedBlockMeshBuffers;
-import qouteall.imm_ptl.core.render.renderer.RendererUsingFrameBuffer;
-import qouteall.imm_ptl.core.render.renderer.RendererUsingStencil;
 import qouteall.imm_ptl.core.teleportation.ClientTeleportationManager;
 import qouteall.q_misc_util.dimension.DimensionIntId;
 import qouteall.q_misc_util.my_util.MyTaskList;
@@ -74,14 +72,12 @@ public class IPModMainClient {
         ClientTeleportationManager.init();
         
         Minecraft.getInstance().execute(() -> {
-            ShaderCodeTransformation.init();
             
             MyRenderHelper.init();
             
-            IPCGlobal.rendererUsingStencil = new RendererUsingStencil();
-            IPCGlobal.rendererUsingFrameBuffer = new RendererUsingFrameBuffer();
+            PortalViewRenderer.init();
             
-            IPCGlobal.renderer = IPCGlobal.rendererUsingStencil;
+            
         });
         
         DubiousThings.init();

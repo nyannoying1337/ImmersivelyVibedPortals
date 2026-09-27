@@ -4,20 +4,16 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.event.Event;
 import qouteall.imm_ptl.core.render.renderer.PortalRenderer;
-import qouteall.imm_ptl.core.render.renderer.RendererDebug;
 import qouteall.imm_ptl.core.render.renderer.RendererDummy;
-import qouteall.imm_ptl.core.render.renderer.RendererUsingFrameBuffer;
-import qouteall.imm_ptl.core.render.renderer.RendererUsingStencil;
 import qouteall.q_misc_util.Helper;
 
 @Environment(EnvType.CLIENT)
 public class IPCGlobal {
     
-    public static PortalRenderer renderer;
-    public static RendererUsingStencil rendererUsingStencil;
-    public static RendererUsingFrameBuffer rendererUsingFrameBuffer;
+    // In 26.3 portal views are rendered by PortalViewRenderer. The PortalRenderer hooks are no-ops for now.
+    // TODO(26.3): remove the PortalRenderer hooks once the remaining callers are ported
     public static RendererDummy rendererDummy = new RendererDummy();
-    public static RendererDebug rendererDebug = new RendererDebug();
+    public static PortalRenderer renderer = rendererDummy;
     
     public static int maxIdleChunkRendererNum = 500;
     
