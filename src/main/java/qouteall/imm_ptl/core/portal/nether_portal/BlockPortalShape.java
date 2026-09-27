@@ -56,8 +56,8 @@ public class BlockPortalShape {
         CompoundTag tag
     ) {
         this(
-            readArea(tag.getList("poses", 3)),
-            Direction.Axis.values()[tag.getInt("axis")]
+            readArea(tag.getListOrEmpty("poses")),
+            Direction.Axis.values()[tag.getIntOr("axis", 0)]
         );
     }
     
@@ -69,9 +69,9 @@ public class BlockPortalShape {
         
         for (int i = 0; i < size / 3; i++) {
             result.add(new BlockPos(
-                list.getInt(i * 3 + 0),
-                list.getInt(i * 3 + 1),
-                list.getInt(i * 3 + 2)
+                list.getIntOr(i * 3 + 0, 0),
+                list.getIntOr(i * 3 + 1, 0),
+                list.getIntOr(i * 3 + 2, 0)
             ));
         }
         
@@ -130,20 +130,20 @@ public class BlockPortalShape {
         Direction[] directions = Helper.getAnotherFourDirections(axis);
         frameAreaWithoutCorner = area.stream().flatMap(
             blockPos -> Stream.of(
-                blockPos.offset(directions[0].getNormal()),
-                blockPos.offset(directions[1].getNormal()),
-                blockPos.offset(directions[2].getNormal()),
-                blockPos.offset(directions[3].getNormal())
+                blockPos.offset(directions[0].getUnitVec3i()),
+                blockPos.offset(directions[1].getUnitVec3i()),
+                blockPos.offset(directions[2].getUnitVec3i()),
+                blockPos.offset(directions[3].getUnitVec3i())
             )
         ).filter(
             blockPos -> !area.contains(blockPos)
         ).collect(Collectors.toSet());
         
         BlockPos[] cornerOffsets = {
-            new BlockPos(directions[0].getNormal()).offset(directions[1].getNormal()),
-            new BlockPos(directions[1].getNormal()).offset(directions[2].getNormal()),
-            new BlockPos(directions[2].getNormal()).offset(directions[3].getNormal()),
-            new BlockPos(directions[3].getNormal()).offset(directions[0].getNormal())
+            BlockPos.ZERO.relative(directions[0]).relative(directions[1]),
+            BlockPos.ZERO.relative(directions[1]).relative(directions[2]),
+            BlockPos.ZERO.relative(directions[2]).relative(directions[3]),
+            BlockPos.ZERO.relative(directions[3]).relative(directions[0])
         };
         
         frameAreaWithCorner = area.stream().flatMap(
@@ -371,14 +371,14 @@ public class BlockPortalShape {
         Direction wDirection = perpendicularDirections.getA();
         Direction hDirection = perpendicularDirections.getB();
         
-        portal.setAxisW(Vec3.atLowerCornerOf(wDirection.getNormal()));
-        portal.setAxisH(Vec3.atLowerCornerOf(hDirection.getNormal()));
+        portal.setAxisW(Vec3.atLowerCornerOf(wDirection.getUnitVec3i()));
+        portal.setAxisH(Vec3.atLowerCornerOf(hDirection.getUnitVec3i()));
         portal.setWidth(Helper.getCoordinate(innerAreaBox.getSize(), wDirection.getAxis()));
         portal.setHeight(Helper.getCoordinate(innerAreaBox.getSize(), hDirection.getAxis()));
         
         Vec3 offset = Vec3.atLowerCornerOf(
             Direction.get(Direction.AxisDirection.POSITIVE, axis)
-                .getNormal()
+                .getUnitVec3i()
         ).scale(0.5);
         
         if (isRectangle()) {

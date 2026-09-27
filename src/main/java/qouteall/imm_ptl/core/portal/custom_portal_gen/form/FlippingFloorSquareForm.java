@@ -3,6 +3,7 @@ package qouteall.imm_ptl.core.portal.custom_portal_gen.form;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -163,13 +164,13 @@ public class FlippingFloorSquareForm extends PortalGenForm {
             .filter(intBox -> intBox.stream().allMatch(
                 pos -> {
                     BlockState blockState = toWorld.getBlockState(pos);
-                    return !blockState.isSolidRender(toWorld, pos) &&
+                    return !blockState.isSolidRender() &&
                         blockState.getBlock() != PortalPlaceholderBlock.instance &&
                         blockState.getFluidState().isEmpty();
                 }
             ))
             .filter(intBox -> intBox.getSurfaceLayer(Direction.DOWN)
-                .getMoved(Direction.DOWN.getNormal())
+                .getMoved(Direction.DOWN.getUnitVec3i())
                 .stream().allMatch(
                     blockPos -> {
                         BlockState blockState = toWorld.getBlockState(blockPos);
@@ -179,14 +180,14 @@ public class FlippingFloorSquareForm extends PortalGenForm {
                 )
             )
             .findFirst().orElseGet(() -> IntBox.fromBasePointAndSize(toPos, areaSize))
-            .getMoved(Direction.DOWN.getNormal());
+            .getMoved(Direction.DOWN.getUnitVec3i());
     }
     
     public static GeneralBreakablePortal[] createPortals(
         ServerLevel fromWorld, ServerLevel toWorld,
         BlockPortalShape fromShape, BlockPortalShape toShape
     ) {
-        GeneralBreakablePortal pa = GeneralBreakablePortal.ENTITY_TYPE.create(fromWorld);
+        GeneralBreakablePortal pa = GeneralBreakablePortal.ENTITY_TYPE.create(fromWorld, EntitySpawnReason.EVENT);
         fromShape.initPortalPosAxisShape(pa, Direction.AxisDirection.POSITIVE);
         
         pa.setDestination(toShape.innerAreaBox.getCenterVec());

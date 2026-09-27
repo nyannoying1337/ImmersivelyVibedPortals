@@ -1,6 +1,8 @@
 package qouteall.imm_ptl.core.mixin.common.collision;
 
-import net.minecraft.world.entity.vehicle.AbstractMinecart;
+import net.minecraft.core.PositionAndRotation;
+import net.minecraft.world.entity.InterpolationHandler;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -10,16 +12,21 @@ import qouteall.imm_ptl.core.IPGlobal;
 @Mixin(AbstractMinecart.class)
 public class MixinAbstractMinecartEntity {
     // for debugging
+    // in 26.x lerpTo is replaced by the InterpolationHandler,
+    // onInterpolationStart is called when the interpolation target is set
     @Inject(
-        method = "lerpTo",
+        method = "onInterpolationStart",
         at = @At("RETURN")
     )
     private void onUpdateTracketPositionAndAngles(
-        double x, double y, double z, float yaw, float pitch, int steps, CallbackInfo ci
+        InterpolationHandler interpolation, CallbackInfo ci
     ) {
         AbstractMinecart this_ = (AbstractMinecart) ((Object) this);
         if (!IPGlobal.allowClientEntityPosInterpolation) {
-            this_.setPos(x, y, z);
+            PositionAndRotation target = interpolation.target();
+            if (target != null) {
+                this_.setPos(target.position());
+            }
         }
     }
 }

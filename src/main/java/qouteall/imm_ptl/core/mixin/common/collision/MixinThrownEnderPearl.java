@@ -3,7 +3,7 @@ package qouteall.imm_ptl.core.mixin.common.collision;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.projectile.ThrownEnderpearl;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl;
 import net.minecraft.world.phys.HitResult;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -14,11 +14,16 @@ import qouteall.q_misc_util.Helper;
 
 @Mixin(ThrownEnderpearl.class)
 public class MixinThrownEnderPearl {
+    // TODO(26.3): vanilla onHit now teleports the owner across dimensions by itself
+    //  (ServerPlayer.teleport(TeleportTransition) before discard()), so after that the owner is
+    //  already in the pearl's dimension and this injection does nothing. It only takes effect when
+    //  vanilla refuses the cross-dimension teleport (owner.canUsePortal(true) is false).
+    //  Decide whether IP should intercept the vanilla cross-dimension pearl teleport instead.
     @Inject(
         method = "onHit",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/world/entity/projectile/ThrownEnderpearl;discard()V"
+            target = "Lnet/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl;discard()V"
         )
     )
     private void onOnHitDiscard(HitResult result, CallbackInfo ci) {
