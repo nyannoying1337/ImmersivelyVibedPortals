@@ -47,3 +47,5 @@ logs/
 
 crowdin-translate-1.2.jar
 src/main/resources/immersive_portals.timestamp
+
+.claude/
