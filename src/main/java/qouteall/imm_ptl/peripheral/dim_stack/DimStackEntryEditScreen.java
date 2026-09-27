@@ -1,7 +1,7 @@
 package qouteall.imm_ptl.peripheral.dim_stack;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -149,7 +149,7 @@ public class DimStackEntryEditScreen extends Screen {
                 
                 editing.entry.bedrockReplacementStr = bedrockBlockField.getValue();
                 
-                Minecraft.getInstance().setScreen(parent);
+                Minecraft.getInstance().gui.setScreen(parent);
                 callback.run();
             }
         ).build();
@@ -287,22 +287,22 @@ public class DimStackEntryEditScreen extends Screen {
     
     @Override
     public void onClose() {
-        Minecraft.getInstance().setScreen(parent);
+        Minecraft.getInstance().gui.setScreen(parent);
     }
     
     @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float delta) {
-        this.renderBackground(guiGraphics, mouseX, mouseY, delta);
+    public void extractRenderState(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float delta) {
+        // the background is rendered by Screen#extractRenderStateWithTooltipAndSubtitles in 26.3
         
-        super.render(guiGraphics, mouseX, mouseY, delta);
+        super.extractRenderState(guiGraphics, mouseX, mouseY, delta);
         
-        scaleField.render(guiGraphics, mouseX, mouseY, delta);
-        horizontalRotationField.render(guiGraphics, mouseX, mouseY, delta);
-        topYField.render(guiGraphics, mouseX, mouseY, delta);
-        bottomYField.render(guiGraphics, mouseX, mouseY, delta);
-        bedrockBlockField.render(guiGraphics, mouseX, mouseY, delta);
-        connectsPreviousButton.render(guiGraphics, mouseX, mouseY, delta);
-        connectsNextButton.render(guiGraphics, mouseX, mouseY, delta);
+        scaleField.extractRenderState(guiGraphics, mouseX, mouseY, delta);
+        horizontalRotationField.extractRenderState(guiGraphics, mouseX, mouseY, delta);
+        topYField.extractRenderState(guiGraphics, mouseX, mouseY, delta);
+        bottomYField.extractRenderState(guiGraphics, mouseX, mouseY, delta);
+        bedrockBlockField.extractRenderState(guiGraphics, mouseX, mouseY, delta);
+        connectsPreviousButton.extractRenderState(guiGraphics, mouseX, mouseY, delta);
+        connectsNextButton.extractRenderState(guiGraphics, mouseX, mouseY, delta);
         
         scaleLabelRect.renderTextLeft(Component.translatable("imm_ptl.scale"), guiGraphics);
         flipLabelRect.renderTextLeft(Component.translatable("imm_ptl.flipped"), guiGraphics);

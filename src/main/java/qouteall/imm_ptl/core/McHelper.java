@@ -7,7 +7,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -76,6 +76,13 @@ import java.util.function.Function;
 import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
+import java.net.URI;
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
 
 // mc related helper methods
 public class McHelper {
@@ -120,7 +127,7 @@ public class McHelper {
         String text
     ) {
         Helper.log(text);
-        player.displayClientMessage(Component.literal(text), false);
+        player.sendSystemMessage(Component.literal(text));
     }
     
     public static long getServerGameTime() {
@@ -239,8 +246,7 @@ public class McHelper {
     @SuppressWarnings("JavadocReference")
     @IPVanillaCopy
     public static int getPlayerLoadDistance(ServerPlayer player) {
-        assert player.getServer() != null;
-        int loadDistanceOnServer = getLoadDistanceOnServer(player.getServer());
+        int loadDistanceOnServer = getLoadDistanceOnServer(player.level().getServer());
         return Mth.clamp(player.requestedViewDistance(), 2, loadDistanceOnServer);
     }
     
@@ -318,10 +324,8 @@ public class McHelper {
         // minecarts, boats and LivingEntity use position interpolation
         // don't make interpolate, or it may interpolate into unloaded chunks
         vehicle.setPos(newVehiclePos.x(), newVehiclePos.y(), newVehiclePos.z());
-        vehicle.lerpTo(
-            newVehiclePos.x(), newVehiclePos.y(), newVehiclePos.z(),
-            vehicle.getYRot(), vehicle.getXRot(), 0
-        );
+        // cancel the position interpolation (the old code called lerpTo with 0 steps)
+        vehicle.getInterpolation().cancel();
         
         McHelper.setPosAndLastTickPos(
             vehicle, newVehiclePos, newVehicleLastTickPos
@@ -335,7 +339,7 @@ public class McHelper {
         ResourceKey<Level> dimension,
         int x, int z
     ) {
-        ChunkHolder chunkHolder_ = getIEChunkMap(dimension).ip_getChunkHolder(ChunkPos.asLong(x, z));
+        ChunkHolder chunkHolder_ = getIEChunkMap(dimension).ip_getChunkHolder(ChunkPos.pack(x, z));
         if (chunkHolder_ == null) {
             return null;
         }
@@ -347,7 +351,7 @@ public class McHelper {
     ) {
         ChunkHolder chunkHolder_ = ((IEChunkMap) (
             (ServerChunkCache) world.getChunkSource()
-        ).chunkMap).ip_getChunkHolder(ChunkPos.asLong(x, z));
+        ).chunkMap).ip_getChunkHolder(ChunkPos.pack(x, z));
         if (chunkHolder_ == null) {
             return null;
         }
@@ -396,11 +400,15 @@ public class McHelper {
     
     
     public static Portal copyEntity(Portal portal) {
-        Portal newPortal = ((Portal) portal.getType().create(portal.level()));
+        Portal newPortal = ((Portal) portal.getType().create(portal.level(), EntitySpawnReason.LOAD));
         
         Validate.notNull(newPortal);
         
-        newPortal.load(portal.saveWithoutId(new CompoundTag()));
+        try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(portal.problemPath(), LOGGER)) {
+            TagValueOutput output = TagValueOutput.createWithContext(reporter, portal.registryAccess());
+            portal.saveWithoutId(output);
+            newPortal.load(TagValueInput.create(reporter, newPortal.registryAccess(), output.buildResult()));
+        }
         return newPortal;
     }
     
@@ -410,7 +418,7 @@ public class McHelper {
      * Only check whether the region file exists now.
      */
     public static boolean getDoesRegionFileExist(ResourceKey<Level> toDimension, BlockPos toPos) {
-        ChunkPos chunkPos = new ChunkPos(toPos);
+        ChunkPos chunkPos = ChunkPos.containing(toPos);
         
         LevelStorageSource.LevelStorageAccess storageSource = MiscHelper.getServer().storageSource;
         
@@ -422,8 +430,8 @@ public class McHelper {
     
     public static MutableComponent getLinkText(String link) {
         return Component.literal(link).withStyle(
-            style -> style.withClickEvent(new ClickEvent(
-                ClickEvent.Action.OPEN_URL, link
+            style -> style.withClickEvent(new ClickEvent.OpenUrl(
+                URI.create(link)
             )).withUnderlined(true)
         );
     }
@@ -433,8 +441,12 @@ public class McHelper {
     }
     
     public static void invokeCommandAs(Entity commandSender, List<String> commandList) {
-        CommandSourceStack commandSource = commandSender.createCommandSourceStack().withPermission(2).withSuppressedOutput();
-        MinecraftServer server = commandSender.getServer();
+        // TODO(26.3): Entity.createCommandSourceStack() was removed; the name-resolution source uses the entity as
+        //  command source position/rotation/entity but CommandSource.NULL as output (output is suppressed anyway)
+        CommandSourceStack commandSource = commandSender
+            .createCommandSourceStackForNameResolution((ServerLevel) commandSender.level())
+            .withPermission(LevelBasedPermissionSet.GAMEMASTER).withSuppressedOutput();
+        MinecraftServer server = commandSender.level().getServer();
         assert server != null;
         Commands commandManager = server.getCommands();
         
@@ -455,7 +467,7 @@ public class McHelper {
             return;
         }
         
-        entityTracker.broadcastAndSend(packet);
+        entityTracker.sendToTrackingPlayersAndSelf((Packet<? super ClientGamePacketListener>) packet);
     }
     
     //it's a little bit incorrect with corner glass pane
@@ -481,14 +493,14 @@ public class McHelper {
     
     public static boolean isServerChunkFullyLoaded(ServerLevel world, ChunkPos chunkPos) {
         LevelChunk chunk = getServerChunkIfPresent(
-            world.dimension(), chunkPos.x, chunkPos.z
+            world.dimension(), chunkPos.x(), chunkPos.z()
         );
         
         if (chunk == null) {
             return false;
         }
         
-        boolean entitiesLoaded = world.areEntitiesLoaded(chunkPos.toLong());
+        boolean entitiesLoaded = world.areEntitiesLoaded(chunkPos.pack());
         
         return entitiesLoaded;
     }
@@ -808,7 +820,7 @@ public class McHelper {
             }
             
             for (ServerPlayer player : playerList) {
-                player.displayClientMessage(text, false);
+                player.sendSystemMessage(text);
             }
             
             return true;
@@ -874,11 +886,11 @@ public class McHelper {
     }
     
     public static int getMinSectionY(LevelAccessor world) {
-        return world.getMinSection();
+        return world.getMinSectionY();
     }
     
     public static int getMaxSectionYExclusive(LevelAccessor world) {
-        return world.getMaxSection();
+        return world.getMaxSectionY();
     }
     
     public static int getYSectionNumber(LevelAccessor world) {

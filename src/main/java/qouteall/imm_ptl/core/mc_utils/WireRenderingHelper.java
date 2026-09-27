@@ -6,7 +6,6 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
@@ -53,7 +52,7 @@ public class WireRenderingHelper {
         
         double periodLen = 100;
         
-        matrixStack.mulPose(rotation.toMcQuaternion());
+        matrixStack.rotate(rotation.toMcQuaternion());
         Matrix4f matrix = matrixStack.last().pose();
         
         float alpha = ((color >> 24) & 0xff) / 255f;
@@ -61,7 +60,7 @@ public class WireRenderingHelper {
         float green = ((color >> 8) & 0xff) / 255f;
         float blue = (color & 0xff) / 255f;
         
-        LevelRenderer.renderLineBox(
+        renderLineBox(
             matrixStack,
             vertexConsumer,
             -boxSize / 2,
@@ -73,6 +72,43 @@ public class WireRenderingHelper {
             red, green, blue, alpha
         );
         matrixStack.popPose();
+    }
+    
+    /**
+     * Replacement of the removed vanilla LevelRenderer.renderLineBox (1.21.1).
+     * Renders the 12 edges of the box as lines.
+     */
+    public static void renderLineBox(
+        PoseStack matrixStack, VertexConsumer vertexConsumer,
+        double minX, double minY, double minZ,
+        double maxX, double maxY, double maxZ,
+        float red, float green, float blue, float alpha
+    ) {
+        int color = ((int) (alpha * 255) << 24) | ((int) (red * 255) << 16) |
+            ((int) (green * 255) << 8) | ((int) (blue * 255));
+        Matrix4f matrix = matrixStack.last().pose();
+        Matrix3f normalMatrix = matrixStack.last().normal();
+        
+        Vec3 p000 = new Vec3(minX, minY, minZ);
+        Vec3 p001 = new Vec3(minX, minY, maxZ);
+        Vec3 p010 = new Vec3(minX, maxY, minZ);
+        Vec3 p011 = new Vec3(minX, maxY, maxZ);
+        Vec3 p100 = new Vec3(maxX, minY, minZ);
+        Vec3 p101 = new Vec3(maxX, minY, maxZ);
+        Vec3 p110 = new Vec3(maxX, maxY, minZ);
+        Vec3 p111 = new Vec3(maxX, maxY, maxZ);
+        
+        Vec3[][] edges = new Vec3[][]{
+            {p000, p100}, {p000, p010}, {p000, p001},
+            {p100, p110}, {p100, p101},
+            {p010, p110}, {p010, p011},
+            {p001, p101}, {p001, p011},
+            {p110, p111}, {p101, p111}, {p011, p111},
+        };
+        
+        for (Vec3[] edge : edges) {
+            putLine(vertexConsumer, color, matrix, normalMatrix, edge[0], edge[1]);
+        }
     }
     
     public static DQuaternion getRandomSmoothRotation(Random random) {
@@ -139,7 +175,7 @@ public class WireRenderingHelper {
             planeCenter.z - cameraPos.z
         );
         
-        matrixStack.mulPose(
+        matrixStack.rotate(
             DQuaternion.rotationByDegrees(normal, CHelper.getSmoothCycles(211) * 360)
                 .toMcQuaternion()
         );
@@ -331,7 +367,7 @@ public class WireRenderingHelper {
             center.z - cameraPos.z
         );
         
-        matrixStack.mulPose(rotation.toMcQuaternion());
+        matrixStack.rotate(rotation.toMcQuaternion());
         
         matrixStack.scale((float) scale, (float) scale, (float) scale);
         
@@ -363,12 +399,14 @@ public class WireRenderingHelper {
             .addVertex(matrix, (float) (lineStart.x), (float) (lineStart.y), (float) (lineStart.z))
             .setColor(color)
             .setNormal(normalTemp.x(), normalTemp.y(), normalTemp.z())
+            .setLineWidth(GizmoLineVertexConsumer.DEFAULT_LINE_WIDTH)
             ;
         
         vertexConsumer
             .addVertex(matrix, (float) (lineEnd.x), (float) (lineEnd.y), (float) (lineEnd.z))
             .setColor(color)
             .setNormal(normalTemp.x(), normalTemp.y(), normalTemp.z())
+            .setLineWidth(GizmoLineVertexConsumer.DEFAULT_LINE_WIDTH)
             ;
     }
     
@@ -539,7 +577,7 @@ public class WireRenderingHelper {
             sphere.center().z - cameraPos.z
         );
         
-        matrixStack.mulPose(sphereOrientation.toMcQuaternion());
+        matrixStack.rotate(sphereOrientation.toMcQuaternion());
         matrixStack.scale((float) sphere.radius(), (float) sphere.radius(), (float) sphere.radius());
         
         Matrix4f matrix = matrixStack.last().pose();

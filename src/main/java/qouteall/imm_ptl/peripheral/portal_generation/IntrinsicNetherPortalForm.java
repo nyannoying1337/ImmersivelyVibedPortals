@@ -44,9 +44,8 @@ public class IntrinsicNetherPortalForm extends NetherPortalLikeForm {
             encounteredVanillaPortalBlock = false;
             if (IPGlobal.enableWarning) {
                 if(triggeringEntity instanceof ServerPlayer player){
-                    player.displayClientMessage(
-                        Component.translatable("imm_ptl.cannot_connect_to_vanilla_portal"),
-                        false
+                    player.sendSystemMessage(
+                        Component.translatable("imm_ptl.cannot_connect_to_vanilla_portal")
                     );
                 }
             }

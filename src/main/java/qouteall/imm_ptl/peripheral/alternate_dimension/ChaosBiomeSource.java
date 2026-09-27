@@ -9,6 +9,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.LinearCongruentialGenerator;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
 import org.jetbrains.annotations.NotNull;
@@ -134,8 +135,8 @@ public class ChaosBiomeSource extends BiomeSource {
     }
     
     @Override
-    public Holder<Biome> getNoiseBiome(int x, int y, int z, Climate.Sampler sampler) {
-        return getRandomBiome(x, z);
+    public BiomeResolver createResolver(Climate.Sampler sampler) {
+        return (x, y, z) -> getRandomBiome(x, z);
     }
     
 }

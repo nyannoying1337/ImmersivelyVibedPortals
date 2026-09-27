@@ -1,16 +1,13 @@
 package qouteall.imm_ptl.peripheral.platform_specific;
 
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap;
-import net.minecraft.client.renderer.RenderType;
 import qouteall.imm_ptl.peripheral.PeripheralModMain;
 
 public class PeripheralModEntryClient implements ClientModInitializer {
     public static void registerBlockRenderLayers() {
-        BlockRenderLayerMap.INSTANCE.putBlock(
-            PeripheralModMain.portalHelperBlock,
-            RenderType.cutout()
-        );
+        // In 26.3 the chunk section layer (cutout) of a block is derived from the transparency
+        // of its model textures, and Fabric's BlockRenderLayerMap no longer exists.
+        // So nothing needs to be registered for the portal helper block.
     }
     
     @Override

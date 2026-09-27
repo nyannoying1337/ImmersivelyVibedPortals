@@ -1,5 +1,8 @@
 package qouteall.imm_ptl.peripheral;
 
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import java.util.function.Consumer;
+import net.minecraft.world.item.component.TooltipDisplay;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
 import com.mojang.logging.LogUtils;
@@ -18,7 +21,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
@@ -34,6 +36,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.Collectors;
+import net.minecraft.server.permissions.Permissions;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.core.registries.Registries;
+import qouteall.imm_ptl.core.McHelper;
 
 public class CommandStickItem extends Item {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -73,14 +81,12 @@ public class CommandStickItem extends Item {
         
         public static Data deserialize(CompoundTag tag) {
             return new Data(
-                tag.getString("command"),
-                tag.getString("nameTranslationKey"),
-                tag.getList(
-                        "descriptionTranslationKeys",
-                        StringTag.valueOf("").getId()
-                    )
+                tag.getStringOr("command", ""),
+                tag.getStringOr("nameTranslationKey", ""),
+                tag.getListOrEmpty("descriptionTranslationKeys")
                     .stream()
-                    .map(tag1 -> ((StringTag) tag1).getAsString())
+                    .filter(tag1 -> tag1 instanceof StringTag)
+                    .map(tag1 -> ((StringTag) tag1).value())
                     .collect(Collectors.toList())
             );
         }
@@ -92,8 +98,11 @@ public class CommandStickItem extends Item {
         BUILT_IN_COMMAND_STICK_TYPES.put(data.command, data);
     }
     
+    public static final Identifier ID = McHelper.newResourceLocation("immersive_portals:command_stick");
+    
+    // in 26.3 the item id must be set in the properties before constructing
     public static final CommandStickItem instance = new CommandStickItem(
-        new Item.Properties()
+        new Item.Properties().setId(ResourceKey.create(Registries.ITEM, ID))
     );
     
     public CommandStickItem(Properties settings) {
@@ -107,7 +116,7 @@ public class CommandStickItem extends Item {
     }
     
     @Override
-    public InteractionResultHolder<ItemStack> use(Level world, Player player, InteractionHand hand) {
+    public InteractionResult use(Level world, Player player, InteractionHand hand) {
         doUse(player, player.getItemInHand(hand));
         return super.use(world, player, hand);
     }
@@ -125,9 +134,10 @@ public class CommandStickItem extends Item {
                 return;
             }
             
-            CommandSourceStack commandSource = player.createCommandSourceStack().withPermission(2);
+            CommandSourceStack commandSource = ((ServerPlayer) player).createCommandSourceStack()
+                .withPermission(LevelBasedPermissionSet.GAMEMASTER);
             
-            MinecraftServer server = player.getServer();
+            MinecraftServer server = player.level().getServer();
             assert server != null;
             Commands commandManager = server.getCommands();
             
@@ -150,16 +160,16 @@ public class CommandStickItem extends Item {
             return true;// any player regardless of gamemode can use
         }
         else {
-            return player.hasPermissions(2) || player.isCreative();
+            return player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER) || player.isCreative();
         }
     }
     
     @Override
     public void appendHoverText(
         ItemStack stack, Item.TooltipContext tooltipContext,
-        List<Component> tooltip, TooltipFlag tooltipFlag
+        TooltipDisplay tooltipDisplay, Consumer<Component> tooltip, TooltipFlag tooltipFlag
     ) {
-        super.appendHoverText(stack, tooltipContext, tooltip, tooltipFlag);
+        super.appendHoverText(stack, tooltipContext, tooltipDisplay, tooltip, tooltipFlag);
         
         Data data = stack.get(COMPONENT_TYPE);
         
@@ -170,25 +180,26 @@ public class CommandStickItem extends Item {
         Iterable<String> splitCommand = Splitter.fixedLength(40).split(data.command);
         
         for (String commandPortion : splitCommand) {
-            tooltip.add(Component.literal(commandPortion).withStyle(ChatFormatting.GOLD));
+            tooltip.accept(Component.literal(commandPortion).withStyle(ChatFormatting.GOLD));
         }
         
         for (String descriptionTranslationKey : data.descriptionTranslationKeys) {
-            tooltip.add(Component.translatable(descriptionTranslationKey).withStyle(ChatFormatting.AQUA));
+            tooltip.accept(Component.translatable(descriptionTranslationKey).withStyle(ChatFormatting.AQUA));
         }
         
-        tooltip.add(Component.translatable("imm_ptl.command_stick").withStyle(ChatFormatting.GRAY));
+        tooltip.accept(Component.translatable("imm_ptl.command_stick").withStyle(ChatFormatting.GRAY));
     }
     
     @Override
-    public @NotNull String getDescriptionId(ItemStack stack) {
+    public @NotNull Component getName(ItemStack stack) {
+        // getDescriptionId(ItemStack) was removed in 26.3
         Data data = stack.get(COMPONENT_TYPE);
         
         if (data == null) {
-            return "";
+            return Component.translatable("");
         }
         
-        return data.nameTranslationKey;
+        return Component.translatable(data.nameTranslationKey);
     }
     
     public static void sendMessage(Player player, Component message) {

@@ -2,10 +2,9 @@ package qouteall.imm_ptl.peripheral.mixin.common.alternate_dimension;
 
 import net.minecraft.core.HolderGetter;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.world.level.levelgen.DensityFunction;
+import net.minecraft.world.level.levelgen.densityfunction.DensityFunction;
 import net.minecraft.world.level.levelgen.NoiseRouter;
 import net.minecraft.world.level.levelgen.NoiseRouterData;
-import net.minecraft.world.level.levelgen.synth.NormalNoise;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
@@ -17,10 +16,7 @@ public interface IENoiseRouterData {
         throw new RuntimeException();
     }
     
-    @Invoker("noNewCaves")
-    public static NoiseRouter ip_noNewCaves(HolderGetter<DensityFunction> holderGetter, HolderGetter<NormalNoise.NoiseParameters> holderGetter2, DensityFunction densityFunction){
-        throw new RuntimeException();
-    }
+    // NoiseRouterData.noNewCaves was removed in 26.3, see NormalSkylandGenerator.noNewCaves
     
     @Invoker("slideEndLike")
     public static DensityFunction ip_slideEndLike(DensityFunction densityFunction, int i, int j) {

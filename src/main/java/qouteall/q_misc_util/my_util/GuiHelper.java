@@ -2,7 +2,7 @@ package qouteall.q_misc_util.my_util;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 
@@ -105,9 +105,9 @@ public class GuiHelper {
             this(0, 0, 0, 0);
         }
         
-        public void renderTextLeft(Component text, GuiGraphics guiGraphics) {
+        public void renderTextLeft(Component text, GuiGraphicsExtractor guiGraphics) {
             Font textRenderer = Minecraft.getInstance().font;
-            guiGraphics.drawString(
+            guiGraphics.text(
                 textRenderer, text,
                 (int) xMin, (int) yMin + 5, -1
             );

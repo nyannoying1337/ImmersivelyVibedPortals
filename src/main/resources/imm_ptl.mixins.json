@@ -98,6 +98,8 @@
     "client.multiworld_awareness.MixinFogRenderer",
     "client.particle.IEParticle",
     "client.particle.MixinParticleEngine",
+    "client.particle.MixinParticleGroup",
+    "client.particle.MixinQuadParticleGroup",
     "client.render.IERenderSystem",
     "client.render.IESectionRenderDispatcher",
     "client.render.MixinBlockEntityRenderDispatcher",

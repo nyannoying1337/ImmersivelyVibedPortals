@@ -3,7 +3,7 @@ package qouteall.imm_ptl.core;
 import com.mojang.logging.LogUtils;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.Util;
+import com.mojang.blaze3d.Blaze3D;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -44,7 +44,7 @@ public class CHelper {
     
     public static PlayerInfo getClientPlayerListEntry() {
         return Minecraft.getInstance().getConnection().getPlayerInfo(
-            Minecraft.getInstance().player.getGameProfile().getId()
+            Minecraft.getInstance().player.getGameProfile().id()
         );
     }
     
@@ -91,7 +91,7 @@ public class CHelper {
     }
     
     public static void printChat(Component text) {
-        Minecraft.getInstance().gui.getChat().addMessage(text);
+        Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(text);
     }
     
     public static void openLinkConfirmScreen(
@@ -99,24 +99,27 @@ public class CHelper {
         String link
     ) {
         Minecraft client = Minecraft.getInstance();
-        client.setScreen(new ConfirmLinkScreen(
+        URI uri;
+        try {
+            uri = new URI(link);
+        }
+        catch (URISyntaxException e) {
+            e.printStackTrace();
+            return;
+        }
+        client.gui.setScreen(new ConfirmLinkScreen(
             (result) -> {
                 if (result) {
-                    try {
-                        Util.getPlatform().openUri(new URI(link));
-                    }
-                    catch (URISyntaxException e) {
-                        e.printStackTrace();
-                    }
+                    Blaze3D.openUri(uri);
                 }
-                client.setScreen(parent);
+                client.gui.setScreen(parent);
             },
-            link, true
+            uri, true
         ));
     }
     
     public static Vec3 getCurrentCameraPos() {
-        return Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        return Minecraft.getInstance().gameRenderer.mainCamera().position();
     }
     
     public static Iterable<Entity> getWorldEntityList(Level world) {

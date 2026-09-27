@@ -14,12 +14,13 @@ import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.progress.ChunkProgressListener;
+import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.thread.BlockableEventLoop;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeGenerationSettings;
+import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.FeatureSorter;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
@@ -30,7 +31,10 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.chunk.LightChunkGetter;
 import net.minecraft.world.level.entity.ChunkStatusUpdateListener;
-import net.minecraft.world.level.levelgen.DensityFunction;
+import net.minecraft.world.level.levelgen.densityfunction.DensityFunction;
+import net.minecraft.world.level.levelgen.densityfunction.DensityFunctions;
+import net.minecraft.world.level.levelgen.NoiseRouter;
+import net.minecraft.world.level.levelgen.NoiseRouterData;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
@@ -41,12 +45,13 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
 import net.minecraft.world.level.levelgen.synth.NormalNoise;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import org.jetbrains.annotations.NotNull;
-import qouteall.imm_ptl.peripheral.mixin.common.alternate_dimension.IEChunkAccess_AlternateDim;
+import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.peripheral.mixin.common.alternate_dimension.IEChunkGenerator_AlternateDim;
 import qouteall.imm_ptl.peripheral.mixin.common.alternate_dimension.IENoiseRouterData;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
@@ -54,7 +59,7 @@ import java.util.stream.Stream;
 
 /**
  * It extends NoiseBasedChunkGenerator, because in
- * {@link ChunkMap#ChunkMap(ServerLevel, LevelStorageSource.LevelStorageAccess, DataFixer, StructureTemplateManager, Executor, BlockableEventLoop, LightChunkGetter, ChunkGenerator, ChunkProgressListener, ChunkStatusUpdateListener, Supplier, int, boolean)}
+ * {@link ChunkMap}'s constructor
  * it uses instanceof to initialize random source.
  */
 public class NormalSkylandGenerator extends NoiseBasedChunkGenerator {
@@ -75,7 +80,7 @@ public class NormalSkylandGenerator extends NoiseBasedChunkGenerator {
     
     private final HolderGetter<Biome> biomeHolderGetter;
     private final HolderGetter<DensityFunction> densityFunctionHolderGetter;
-    private final HolderGetter<NormalNoise.NoiseParameters> noiseParametersHolderGetter;
+    private final HolderGetter<NormalNoise> noiseParametersHolderGetter;
     private final long seed;
     
     public NormalSkylandGenerator(
@@ -86,7 +91,7 @@ public class NormalSkylandGenerator extends NoiseBasedChunkGenerator {
         
         HolderGetter<Biome> biomeHolderGetter,
         HolderGetter<DensityFunction> densityFunctionHolderGetter,
-        HolderGetter<NormalNoise.NoiseParameters> noiseParametersHolderGetter,
+        HolderGetter<NormalNoise> noiseParametersHolderGetter,
         long seed
     ) {
         super(biomeSource, noiseGeneratorSettings);
@@ -98,16 +103,16 @@ public class NormalSkylandGenerator extends NoiseBasedChunkGenerator {
         this.seed = seed;
         
         this.delegatedRandomState = RandomState.create(
-            (delegate.generatorSettings().value()),
-            ((HolderLookup.RegistryLookup<NormalNoise.NoiseParameters>) noiseParametersHolderGetter),
-            seed
+            noiseParametersHolderGetter,
+            seed,
+            delegate.generatorSettings().value()
         );
     }
     
     public static NormalSkylandGenerator create(
         HolderGetter<Biome> biomeHolderGetter,
         HolderGetter<DensityFunction> densityFunctionHolderGetter,
-        HolderGetter<NormalNoise.NoiseParameters> noiseParametersHolderGetter,
+        HolderGetter<NormalNoise> noiseParametersHolderGetter,
         HolderGetter<NoiseGeneratorSettings> noiseGeneratorSettingsHolderGetter,
         HolderGetter<MultiNoiseBiomeSourceParameterList> biomeParamListLookup,
         long seed
@@ -130,20 +135,20 @@ public class NormalSkylandGenerator extends NoiseBasedChunkGenerator {
             intrinsicSkylandNGS.noiseSettings(),
             intrinsicSkylandNGS.defaultBlock(),
             intrinsicSkylandNGS.defaultFluid(),
-            IENoiseRouterData.ip_noNewCaves(
-                densityFunctionHolderGetter,
-                noiseParametersHolderGetter,
+            noNewCaves(
                 IENoiseRouterData.ip_slideEndLike(IENoiseRouterData.ip_getFunction(
                     densityFunctionHolderGetter, IENoiseRouterData.get_BASE_3D_NOISE_END()
                 ), 0, 128)
             ),
-            intrinsicSkylandNGS.surfaceRule(),
+            // in 1.21.1 the surface was built by this generator (using the overworld surface rule),
+            // in 26.3 the surface is built by the delegate in buildTerrain, so use the overworld rule here
+            overworldNGS.materialRule(),
             intrinsicSkylandNGS.spawnTarget(),
             0, // overwrite seaLevel
             intrinsicSkylandNGS.disableMobGeneration(),
-            intrinsicSkylandNGS.aquifersEnabled(),
-            intrinsicSkylandNGS.oreVeinsEnabled(),
-            intrinsicSkylandNGS.useLegacyRandomSource()
+            intrinsicSkylandNGS.aquifers(),
+            intrinsicSkylandNGS.useLegacyRandomSource(),
+            NoiseGeneratorSettings.DebugFunctions.EMPTY
         );
         
         NoiseBasedChunkGenerator skylandGenerator = new NoiseBasedChunkGenerator(
@@ -186,19 +191,28 @@ public class NormalSkylandGenerator extends NoiseBasedChunkGenerator {
         return MAP_CODEC;
     }
     
+    /**
+     * Replacement of the vanilla NoiseRouterData.noNewCaves() which was removed in 26.3.
+     * Follows 26.3 {@link NoiseRouterData#floatingIslands}.
+     */
+    private static NoiseRouter noNewCaves(DensityFunction slide) {
+        return NoiseRouterData.simpleRouter(
+            DensityFunctions.add(NoiseRouterData.postProcess(slide, 8, 4), DensityFunctions.beardifier())
+        );
+    }
+    
+    // In 26.3, fillFromNoise, buildSurface and applyCarvers are merged into buildTerrain.
+    // The noise chunk is no longer cached in ChunkAccess, so it doesn't need to be reset.
     @Override
-    public CompletableFuture<ChunkAccess> fillFromNoise(
-        Blender blender, RandomState pRandomState,
-        StructureManager structureManager, ChunkAccess chunkAccess
+    public CompletableFuture<ChunkAccess> buildTerrain(
+        ChunkAccess chunkAccess, Blender blender, RandomState pRandomState,
+        StructureManager structureManager, BiomeManager biomeManager,
+        @Nullable WorldGenRegion carverBiomeRegion, Set<Holder<Biome>> possibleBiomes
     ) {
-        ((IEChunkAccess_AlternateDim) chunkAccess).ip_setNoiseChunk(null);
-        
-        return delegate.fillFromNoise(
-            blender, delegatedRandomState, structureManager, chunkAccess
-        ).thenApply(c -> {
-            ((IEChunkAccess_AlternateDim) c).ip_setNoiseChunk(null);
-            return c;
-        });
+        return delegate.buildTerrain(
+            chunkAccess, blender, delegatedRandomState, structureManager, biomeManager,
+            carverBiomeRegion, possibleBiomes
+        );
     }
     
     @Override
