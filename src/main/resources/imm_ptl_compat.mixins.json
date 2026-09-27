@@ -3,28 +3,7 @@
   "package": "qouteall.imm_ptl.core.compat.mixin",
   "compatibilityLevel": "JAVA_25",
   "plugin": "qouteall.imm_ptl.core.compat.IPCompatMixinPlugin",
-  "mixins": [
-    "cardinal_comp.MixinCardinalCompComponentKey",
-    "flywheel.MixinFlywheelCrumblingRenderer",
-    "flywheel.MixinFlywheelProgramCompiler",
-    "flywheel.MixinFlywheelQuadConverter",
-    "iris.MixinIrisClearPass",
-    "iris.MixinIrisFinalPassRenderer",
-    "iris.MixinIrisIris",
-    "iris.MixinIrisRenderingPipeline",
-    "iris.MixinIrisShadowRenderTargets",
-    "iris.MixinIrisSodiumShader",
-    "iris.MixinIrisTransformPatcher",
-    "sodium.IESodiumWorldRenderer",
-    "sodium.MixinSodiumDefaultShaderInterface",
-    "sodium.MixinSodiumFlawlessFrames",
-    "sodium.MixinSodiumOcclusionCuller",
-    "sodium.MixinSodiumRenderRegion",
-    "sodium.MixinSodiumRenderSectionManager",
-    "sodium.MixinSodiumShaderLoader",
-    "sodium.MixinSodiumViewport",
-    "sodium.MixinSodiumWorldRenderer"
-  ],
+  "mixins": [],
   "injectors": {
     "defaultRequire": 1
   }

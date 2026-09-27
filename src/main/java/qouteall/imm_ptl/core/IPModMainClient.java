@@ -26,6 +26,8 @@ import qouteall.q_misc_util.dimension.DimensionIntId;
 import qouteall.q_misc_util.my_util.MyTaskList;
 
 public class IPModMainClient {
+    private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+    
     
     private static void showNvidiaVideoCardWarning() {
         IPGlobal.CLIENT_TASK_LIST.addTask(MyTaskList.withDelayCondition(
@@ -61,6 +63,16 @@ public class IPModMainClient {
     }
     
     public static void init() {
+        // Dev tool: -Dimm_ptl.mixinAudit=true loads all mixin targets (reporting failed mixins), then exits.
+        if (Boolean.getBoolean("imm_ptl.mixinAudit")) {
+            Minecraft.getInstance().execute(() -> {
+                LOGGER.info("[ImmPtl] Mixin audit started");
+                org.spongepowered.asm.mixin.MixinEnvironment.getCurrentEnvironment().audit();
+                LOGGER.info("[ImmPtl] Mixin audit finished");
+                Runtime.getRuntime().halt(0);
+            });
+        }
+        
         ClientWorldLoader.init();
         
         ClientTeleportationManager.init();
