@@ -9,35 +9,36 @@ import qouteall.imm_ptl.core.ducks.IERenderSection;
 
 @Mixin(SectionRenderDispatcher.RenderSection.class)
 public abstract class MixinRenderSection implements IERenderSection {
-    
+
+    // used by VisibleSectionDiscovery to mark the sections checked in one traverse
     private long portal_mark;
-    
+
     @Shadow
-    protected abstract void reset();
-    
+    public abstract void reset();
+
     @Shadow
     @Final
     @Mutable
     public int index;
-    
+
     @Override
     public void portal_fullyReset() {
         reset();
     }
-    
+
     @Override
     public long portal_getMark() {
         return portal_mark;
     }
-    
+
     @Override
     public void portal_setMark(long arg) {
         portal_mark = arg;
     }
-    
+
     @Override
     public void portal_setIndex(int arg) {
         index = arg;
     }
-    
+
 }

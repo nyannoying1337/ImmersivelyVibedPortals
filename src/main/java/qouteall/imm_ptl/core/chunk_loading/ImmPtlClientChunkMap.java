@@ -237,16 +237,13 @@ public class ImmPtlClientChunkMap extends ClientChunkCache {
     
     @Override
     public void onLightUpdate(LightLayer lightType, SectionPos chunkSectionPos) {
-        // TODO(26.3): LevelRenderer.setSectionDirty was moved to the global Minecraft.levelExtractor
-        //  (there is no per-dimension LevelRenderer API for it any more).
-        //  Before, this marked the section dirty in ClientWorldLoader.getWorldRenderer(level.dimension()).
-        //  Now it only works for the current client level; needs the rendering redesign for other dimensions.
-        Minecraft client = Minecraft.getInstance();
-        if (client.level == level) {
-            client.levelExtractor.setSectionDirty(
-                chunkSectionPos.x(), chunkSectionPos.y(), chunkSectionPos.z()
-            );
-        }
+        // vanilla ClientChunkCache.onLightUpdate uses the global Minecraft.levelExtractor.
+        // Each ClientLevel has its own LevelExtractor (see DimensionRenderHelper);
+        // ClientLevel.setSectionRangeDirty forwards to that level's own extractor.
+        level.setSectionRangeDirty(
+            chunkSectionPos.x(), chunkSectionPos.y(), chunkSectionPos.z(),
+            chunkSectionPos.x(), chunkSectionPos.y(), chunkSectionPos.z()
+        );
     }
 
     // In 26.3 the level extractor (renderer) reads update-tracking sets from ClientChunkCache.
