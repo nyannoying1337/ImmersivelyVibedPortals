@@ -9,8 +9,7 @@ import net.fabricmc.api.Environment;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import qouteall.imm_ptl.core.mc_utils.GizmoLineVertexConsumer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceKey;
@@ -835,7 +834,6 @@ public class ClientPortalWandPortalDrag {
     
     public static void render(
         PoseStack matrixStack,
-        MultiBufferSource.BufferSource bufferSource,
         double camX, double camY, double camZ
     ) {
         LocalPlayer player = Minecraft.getInstance().player;
@@ -874,7 +872,7 @@ public class ClientPortalWandPortalDrag {
         
         Vec3 cameraPos = new Vec3(camX, camY, camZ);
         
-        VertexConsumer vertexConsumer = bufferSource.getBuffer(RenderType.lines());
+        GizmoLineVertexConsumer vertexConsumer = GizmoLineVertexConsumer.lines(cameraPos);
         
         Vec3 renderedCursor = getCursorToRender();
         if (renderedCursor != null) {
@@ -957,7 +955,7 @@ public class ClientPortalWandPortalDrag {
             renderWidthHeightLineSegment(matrixStack, cameraPos, vertexConsumer, rect);
         }
         
-        VertexConsumer debugLineStripConsumer = bufferSource.getBuffer(RenderType.debugLineStrip(1));
+        GizmoLineVertexConsumer debugLineStripConsumer = GizmoLineVertexConsumer.lineStrip(cameraPos, 1);
         
         RenderedPlane plane = renderedPlane.getCurrent();
         if (plane != null && plane.plane() != null && plane.plane().dimension() == currDim) {
@@ -999,6 +997,8 @@ public class ClientPortalWandPortalDrag {
                 matrixStack
             );
         }
+        vertexConsumer.finish();
+        debugLineStripConsumer.finish();
     }
     
     @Nullable

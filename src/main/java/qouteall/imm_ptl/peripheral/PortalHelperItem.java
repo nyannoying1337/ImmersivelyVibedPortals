@@ -1,5 +1,7 @@
 package qouteall.imm_ptl.peripheral;
 
+import java.util.function.Consumer;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
@@ -42,10 +44,10 @@ public class PortalHelperItem extends BlockItem {
     @Override
     public void appendHoverText(
         ItemStack itemStack, Item.TooltipContext tooltipContext,
-        List<Component> list, TooltipFlag tooltipFlag
+        TooltipDisplay tooltipDisplay, Consumer<Component> list, TooltipFlag tooltipFlag
     ) {
-        super.appendHoverText(itemStack, tooltipContext, list, tooltipFlag);
+        super.appendHoverText(itemStack, tooltipContext, tooltipDisplay, list, tooltipFlag);
         
-        list.add(Component.translatable("imm_ptl.portal_helper_tooltip"));
+        list.accept(Component.translatable("imm_ptl.portal_helper_tooltip"));
     }
 }
