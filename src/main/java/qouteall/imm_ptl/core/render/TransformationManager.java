@@ -1,6 +1,6 @@
 package qouteall.imm_ptl.core.render;
 
-import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Camera;
@@ -16,7 +16,6 @@ import org.joml.Vector3f;
 import qouteall.imm_ptl.core.compat.GravityChangerInterface;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
-import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 import qouteall.q_misc_util.Helper;
 import qouteall.q_misc_util.my_util.DQuaternion;
 
@@ -85,20 +84,25 @@ public class TransformationManager {
         return null;
     }
     
-    private static void processTransformation(Camera camera, PoseStack matrixStack) {
+    /**
+     * Applies the rotation animation delta (after teleporting through a rotating portal) to the main camera's
+     * view rotation matrix: finalViewRotation = viewRotation * animationDelta.
+     * Portal views derive their view rotation from the main camera's one (MixinCamera.ip_setupAsPortalView)
+     * and then apply the portal transformations, which gives the documented order.
+     * <p>
+     * TODO(26.3): nothing calls this yet. It must be applied to the main camera's cached view rotation matrix
+     *  after {@code Camera.update} (MixinCamera: recompute {@code cachedViewRotMatrix}, apply this,
+     *  mark the view-rotation-projection matrix dirty and re-prepare the cull frustum).
+     *  Until then the camera snaps instead of smoothly rotating after going through a rotating portal.
+     *
+     * @return the modified matrix
+     */
+    public static Matrix4f applyAnimationDelta(Matrix4f viewRotation) {
         DQuaternion currentAnimationDelta = getCurrentAnimationDelta();
         if (currentAnimationDelta != null) {
-            matrixStack.mulPose(currentAnimationDelta.toMcQuaternion());
+            viewRotation.rotate(currentAnimationDelta.toMcQuaternion());
         }
-        
-        WorldRenderInfo.applyAdditionalTransformations(matrixStack);
-    }
-    
-    public static Matrix4f processTransformation(Camera camera, Matrix4f matrix4f) {
-        PoseStack poseStack = new PoseStack();
-        poseStack.last().pose().set(matrix4f);
-        processTransformation(camera, poseStack);
-        return poseStack.last().pose();
+        return viewRotation;
     }
     
     public static boolean isAnimationRunning() {
@@ -228,16 +232,16 @@ public class TransformationManager {
     }
     
     private static void updateCamera(Minecraft client) {
-        Camera camera = client.gameRenderer.getMainCamera();
-        camera.setup(
-            client.level,
-            client.player,
-            !client.options.getCameraType().isFirstPerson(),
-            client.options.getCameraType().isMirrored(),
-            RenderStates.getPartialTick()
-        );
+        client.gameRenderer.mainCamera().update(client.getDeltaTracker());
     }
-    
+
+    /**
+     * TODO(26.3): a mirror transformation flips the triangle winding, so back-face culling culls the wrong faces
+     *  in views through an odd number of mirrors ({@code PortalRendering.isRenderingOddNumberOfMirrors()}).
+     *  1.21.1 disabled culling globally around each draw (MixinMultiBufferSourceBufferSource), which is impossible
+     *  now because culling is part of the RenderPipeline. Possible fix: render mirror views with an x-flipped
+     *  projection (restores winding) and sample the view texture with a flipped x in the portal surface shader.
+     */
     public static Matrix4f getMirrorTransformation(Vec3 normal) {
         float x = (float) normal.x;
         float y = (float) normal.y;
@@ -254,35 +258,29 @@ public class TransformationManager {
         return matrix;
     }
     
-    // https://docs.microsoft.com/en-us/windows/win32/opengl/glortho
+    /**
+     * An orthographic projection centered at the camera.
+     * 26.3 uses reversed-Z (near maps to depth 1, far to depth 0), like {@link net.minecraft.client.renderer.Projection}.
+     */
     public static Matrix4f getIsometricProjection() {
         int w = client.getWindow().getWidth();
         int h = client.getWindow().getHeight();
-        
+
         float wView = (isometricViewLength / h) * w;
-        
+
         float near = -2000;
         float far = 2000;
-        
+
         float left = -wView / 2;
         float right = wView / 2;
-        
+
         float top = isometricViewLength / 2;
         float bottom = -isometricViewLength / 2;
-        
-        float[] arr = new float[]{
-            2.0f / (right - left), 0, 0, -(right + left) / (right - left),
-            0, 2.0f / (top - bottom), 0, -(top + bottom) / (top - bottom),
-            0, 0, -2.0f / (far - near), -(far + near) / (far - near),
-            0, 0, 0, 1
-        };
-        Matrix4f m1 = new Matrix4f();
-        m1.set(arr);
-        
-        return m1;
+
+        boolean zZeroToOne = RenderSystem.getDevice().getDeviceInfo().isZZeroToOne();
+        // near and far swapped for reversed-Z
+        return new Matrix4f().setOrtho(left, right, bottom, top, far, near, zZeroToOne);
     }
-    
-    public static boolean isCalculatingViewBobbingOffset = false;
     
     @Environment(EnvType.CLIENT)
     public static class RemoteCallables {
@@ -302,12 +300,12 @@ public class TransformationManager {
     
     // isometric is equivalent to the camera being in infinitely far place
     public static Vec3 getIsometricAdjustedCameraPos() {
-        Camera camera = client.gameRenderer.getMainCamera();
+        Camera camera = client.gameRenderer.mainCamera();
         return getIsometricAdjustedCameraPos(camera);
     }
-    
+
     public static Vec3 getIsometricAdjustedCameraPos(Camera camera) {
-        Vec3 cameraPos = camera.getPosition();
+        Vec3 cameraPos = camera.position();
         
         if (!isIsometricView) {
             return cameraPos;
