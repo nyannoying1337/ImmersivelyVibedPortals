@@ -29,7 +29,6 @@
     "common.collision.MixinPlayer_Collision",
     "common.collision.MixinProjectile",
     "common.collision.MixinThrowableProjectile",
-    "common.collision.MixinThrownEnderPearl",
     "common.container_gui.MixinAbstractContainerMenu",
     "common.container_gui.MixinContainer",
     "common.container_gui.MixinContainerOpenersCounter",
