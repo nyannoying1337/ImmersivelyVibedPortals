@@ -15,6 +15,8 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.ViewArea;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
@@ -51,13 +53,11 @@ import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.ducks.IEClientWorld;
 import qouteall.imm_ptl.core.ducks.IEEntity;
-import qouteall.imm_ptl.core.ducks.IEWorldRenderer;
 import qouteall.imm_ptl.core.platform_specific.IPConfig;
 import qouteall.imm_ptl.core.platform_specific.IPConfigGUI;
 import qouteall.imm_ptl.core.platform_specific.O_O;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.render.ForceMainThreadRebuild;
-import qouteall.imm_ptl.core.render.ImmPtlViewArea;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.teleportation.ClientTeleportationManager;
 import qouteall.q_misc_util.Helper;
@@ -152,20 +152,6 @@ public class ClientDebugCommand {
                 return 0;
             })
         );
-//        builder = builder.then(ClientCommands
-//            .literal("hacked_chunk_render_dispatcher_enable")
-//            .executes(context -> {
-//                IPCGlobal.useHackedChunkRenderDispatcher = true;
-//                return 0;
-//            })
-//        );
-//        builder = builder.then(ClientCommands
-//            .literal("hacked_chunk_render_dispatcher_disable")
-//            .executes(context -> {
-//                IPCGlobal.useHackedChunkRenderDispatcher = false;
-//                return 0;
-//            })
-//        );
         builder = builder.then(ClientCommands
             .literal("report_resource_consumption")
             .executes(context1 -> {
@@ -335,12 +321,12 @@ public class ClientDebugCommand {
             .literal("report_rebuild_status")
             .executes(context -> {
                 Minecraft.getInstance().execute(() -> {
-                    ClientWorldLoader.getClientWorlds().forEach((world) -> {
-                        ImmPtlViewArea builtChunkStorage = (ImmPtlViewArea) ((IEWorldRenderer)
-                            ClientWorldLoader.getWorldRenderer(world.dimension()))
-                            .ip_getBuiltChunkStorage();
+                    ClientWorldLoader.RENDER_HELPER_MAP.forEach((dimension, renderHelper) -> {
+                        SectionRenderDispatcher sectionDispatcher =
+                            renderHelper.levelRenderer.sectionRenderDispatcher();
                         CHelper.printChat(
-                            world.dimension().identifier().toString() + builtChunkStorage.getDebugString()
+                            dimension.identifier().toString() + " " +
+                                (sectionDispatcher == null ? "no section dispatcher" : sectionDispatcher.getStats())
                         );
                     });
                 });
@@ -813,14 +799,13 @@ public class ClientDebugCommand {
             
             
             str.append("Chunk Mesh Sections:\n");
-            ClientWorldLoader.WORLD_RENDERER_MAP.forEach(
-                (dimension, worldRenderer) -> {
+            ClientWorldLoader.RENDER_HELPER_MAP.forEach(
+                (dimension, renderHelper) -> {
+                    ViewArea viewArea = renderHelper.levelRenderer.viewArea();
                     str.append(String.format(
                         "%s %s\n",
                         dimension.identifier(),
-                        ((ImmPtlViewArea) ((IEWorldRenderer) worldRenderer)
-                            .ip_getBuiltChunkStorage()
-                        ).getManagedSectionNum()
+                        viewArea == null ? 0 : viewArea.size()
                     ));
                 }
             );

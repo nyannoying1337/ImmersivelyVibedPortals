@@ -1,672 +1,235 @@
 package qouteall.imm_ptl.core.mixin.client.render;
 
-import net.minecraft.util.profiling.Profiler;
-import com.llamalad7.mixinextras.sugar.Local;
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.platform.Lighting;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexBuffer;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.client.Camera;
-import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.PostChain;
-import net.minecraft.client.renderer.RenderBuffers;
-import net.minecraft.client.renderer.ViewArea;
+import net.minecraft.client.renderer.SectionOcclusionGraph;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
-import net.minecraft.client.renderer.culling.Frustum;
-import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.SectionPos;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.Level;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.state.level.ChunkLoadingRenderState;
 import net.minecraft.world.phys.Vec3;
-import org.apache.commons.lang3.Validate;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import qouteall.imm_ptl.core.CHelper;
-import qouteall.imm_ptl.core.ClientWorldLoader;
-import qouteall.imm_ptl.core.IPCGlobal;
-import qouteall.imm_ptl.core.IPGlobal;
-import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
-import qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface;
-import qouteall.imm_ptl.core.ducks.IEWorldRenderer;
-import qouteall.imm_ptl.core.miscellaneous.IPVanillaCopy;
-import qouteall.imm_ptl.core.render.CrossPortalEntityRenderer;
-import qouteall.imm_ptl.core.render.FrontClipping;
-import qouteall.imm_ptl.core.render.ImmPtlViewArea;
-import qouteall.imm_ptl.core.render.MyGameRenderer;
-import qouteall.imm_ptl.core.render.MyRenderHelper;
+import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.VisibleSectionDiscovery;
-import qouteall.imm_ptl.core.render.context_management.PortalRendering;
-import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
-import qouteall.q_misc_util.Helper;
 
-@SuppressWarnings("JavadocReference")
+/**
+ * Portal views are rendered before the main view, each with its dimension's own {@link LevelRenderer}
+ * (see docs/rendering-26.3.md). A portal view of the main view's dimension uses the main view's LevelRenderer,
+ * so this mixin keeps such views from disturbing the main view's section state:
+ * <ul>
+ *     <li>During any portal view, the LevelRenderer's visible section lists are switched to separate lists,
+ *     and {@link LevelRenderer#sectionOcclusionGraph()} returns a
+ *     {@link VisibleSectionDiscovery.PortalViewOcclusionGraph}, so the vanilla {@code LevelExtractor.applyFrustum}
+ *     computes the view's visible sections with {@link VisibleSectionDiscovery} every view,
+ *     without touching the main view's lists or consuming the real graph's frustum update.</li>
+ *     <li>During a portal view that uses the main view's LevelRenderer
+ *     ({@link VisibleSectionDiscovery#isRenderingPortalViewWithMainLevelRenderer}):
+ *     the ViewArea is not re-centered to the view camera and the section compile priority camera position
+ *     is not changed (repositionCamera), the {@link SectionOcclusionGraph} is not updated
+ *     (only its loaded chunk / empty section bookkeeping is), and translucent sections are not resorted.
+ *     For views of other dimensions all of that runs normally (that dimension's renderer is only used by portal views).</li>
+ * </ul>
+ * <p>
+ * Hooks of 1.21.1 that were removed because the new design does not need them:
+ * front clipping setup around layers/entities/weather (clipping is automatic in shaders, see PortalClipping),
+ * the old renderer's before/after translucent hooks and framebuffer clearing (no recursive rendering anymore),
+ * fog/lighting resets after portal rendering, fabulous translucent target workaround (no such target anymore),
+ * ImmPtlViewArea construction, allChanged hooks (the extractor owns allChanged, see MixinLevelExtractor),
+ * setupRender terrain override / spectator hack (replaced by the section list switching above; views disable smartCull),
+ * pollLightUpdates world switching (not called by LevelRenderer anymore), isSectionCompiled (was for ImmPtlViewArea),
+ * sky eye position (the sky is extracted from the view camera), glowing entity suppression
+ * (the entity outline is only blitted for the main view: GameRenderer.render calls blitEntityOutline after the main view).
+ * <p>
+ * TODO(26.3): cross-portal entity rendering (CrossPortalEntityRenderer: an entity touching a portal is clipped by the portal
+ *  plane and its projection is rendered on the other side). 1.21.1 hooked LevelRenderer.renderLevel around each renderEntity call
+ *  and set up per-draw clip planes. In 26.3 entities are submitted from EntityRenderStates in LevelRenderer.submitEntities
+ *  (no Entity reference, no per-draw clip planes); needs a new approach (e.g. per-render-state clip plane in extraction).
+ * TODO(26.3): mirror face culling. With an odd number of mirrors the view transformation flips the winding order, so
+ *  back-face culling culls the wrong faces (1.21.1 flipped the GL cull face around terrain layers and sky).
+ *  Cull mode is fixed in 26.3 RenderPipelines; e.g. render the view with the un-mirrored camera and flip the view texture
+ *  horizontally when sampling it on the portal surface.
+ * TODO(26.3): depth clamp for portal views (IPGlobal.enableDepthClampForPortalRendering); renderpearl has no depth clamp.
+ */
 @Mixin(value = LevelRenderer.class)
-public abstract class MixinLevelRenderer implements IEWorldRenderer {
-    
-    @Shadow
-    private ClientLevel level;
-    
-    @Shadow
-    @Final
-    private EntityRenderDispatcher entityRenderDispatcher;
-    
-    @Shadow
-    @Final
-    private Minecraft minecraft;
-    
-    @Shadow
-    private ViewArea viewArea;
-    
-    @Shadow
-    protected abstract void renderEntity(
-        Entity entity_1,
-        double double_1,
-        double double_2,
-        double double_3,
-        float float_1,
-        PoseStack matrixStack_1,
-        MultiBufferSource vertexConsumerProvider_1
-    );
-    
-    @Shadow
-    private PostChain transparencyChain;
-    
-    @Mutable
-    @Shadow
-    @Final
-    private RenderBuffers renderBuffers;
-    
-    @Shadow
-    private int lastViewDistance;
-    
-    @Shadow
-    @Nullable
-    private RenderTarget translucentTarget;
-    
-    @Shadow
-    private Frustum cullingFrustum;
-    
-    @Shadow
-    @Nullable
-    private VertexBuffer starBuffer;
-    
-    @Shadow
-    @Nullable
-    private VertexBuffer skyBuffer;
-    
-    @Shadow
-    @Nullable
-    private VertexBuffer darkBuffer;
-    
-    @Shadow
-    @Nullable
-    private VertexBuffer cloudBuffer;
-    
-    @Shadow
-    protected abstract void deinitTransparency();
-    
-    @Shadow
-    private @Nullable SectionRenderDispatcher sectionRenderDispatcher;
-    
+public abstract class MixinLevelRenderer {
+
     @Shadow
     @Final
     @Mutable
     private ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections;
-    
-    @Inject(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/DimensionSpecialEffects;constantAmbientLight()Z"
-        )
-    )
-    private void onAfterCutoutRendering(
-        DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f modelView, Matrix4f matrix4f2, CallbackInfo ci
-    ) {
-//        IPCGlobal.renderer.onBeforeTranslucentRendering(matrices);
-        
-        CrossPortalEntityRenderer.onBeginRenderingEntitiesAndBlockEntities(modelView);
+
+    @Shadow
+    @Final
+    @Mutable
+    private ObjectArrayList<SectionRenderDispatcher.RenderSection> nearbyVisibleSections;
+
+    @Shadow
+    @Final
+    private SectionOcclusionGraph sectionOcclusionGraph;
+
+    // the lists used by the main view (the vanilla instances)
+    @Unique
+    private ObjectArrayList<SectionRenderDispatcher.RenderSection> ip_mainVisibleSections;
+    @Unique
+    private ObjectArrayList<SectionRenderDispatcher.RenderSection> ip_mainNearbyVisibleSections;
+
+    // the lists used by portal views
+    @Unique
+    private final ObjectArrayList<SectionRenderDispatcher.RenderSection> ip_viewVisibleSections =
+        new ObjectArrayList<>();
+    @Unique
+    private final ObjectArrayList<SectionRenderDispatcher.RenderSection> ip_viewNearbyVisibleSections =
+        new ObjectArrayList<>();
+
+    @Unique
+    private @Nullable VisibleSectionDiscovery.PortalViewOcclusionGraph ip_portalViewOcclusionGraph;
+
+    @Inject(method = "<init>", at = @At("RETURN"))
+    private void onInit(CallbackInfo ci) {
+        ip_mainVisibleSections = visibleSections;
+        ip_mainNearbyVisibleSections = nearbyVisibleSections;
     }
-    
-    @Inject(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/Sheets;translucentCullBlockSheet()Lnet/minecraft/client/renderer/RenderType;"
-        )
-    )
-    private void onMyBeforeTranslucentRendering(
-        DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f modelView, Matrix4f matrix4f2, CallbackInfo ci
-    ) {
-        IPCGlobal.renderer.onBeforeTranslucentRendering(modelView);
-        
-        MyGameRenderer.updateFogColor();
-        MyGameRenderer.resetFogState();
-        
-        MyGameRenderer.resetDiffuseLighting();
-        
-        FrontClipping.disableClipping();
-    }
-    
-    @IPVanillaCopy
-    @Inject(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;endLastBatch()V",
-            ordinal = 1, // the second occurrence
-            shift = At.Shift.AFTER
-        )
-    )
-    private void onEndRenderingEntities(
-        DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f matrix4f, Matrix4f matrix4f2, CallbackInfo ci, @Local PoseStack poseStack
-    ) {
-        CrossPortalEntityRenderer.onEndRenderingEntitiesAndBlockEntities(poseStack);
-    }
-    
-    @Inject(
-        method = "renderLevel",
-        at = @At("RETURN")
-    )
-    private void onAfterTranslucentRendering(
-        DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f modelView, Matrix4f matrix4f2, CallbackInfo ci
-    ) {
-        IPCGlobal.renderer.onAfterTranslucentRendering(modelView);
-        
-        // make hand rendering normal
-        Lighting.setupLevel();
-    }
-    
-    @Inject(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V"
-        )
-    )
-    private void onBeforeRenderingLayer(
-        DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f modelView, Matrix4f matrix4f2, CallbackInfo ci
-    ) {
-        if (PortalRendering.isRendering()) {
-            FrontClipping.setupInnerClipping(
-                PortalRendering.getActiveClippingPlane(),
-                modelView,
-                -FrontClipping.ADJUSTMENT
-                // move the clipping plane a little back, to make world wrapping portal not z-fight
-            );
-            
-            if (PortalRendering.isRenderingOddNumberOfMirrors()) {
-                MyRenderHelper.applyMirrorFaceCulling();
-            }
-            
-            if (IPGlobal.enableDepthClampForPortalRendering) {
-                CHelper.enableDepthClamp();
-            }
-        }
-    }
-    
-    @Inject(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-            shift = At.Shift.AFTER
-        )
-    )
-    private void onAfterRenderingLayer(
-        DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f matrix4f, Matrix4f matrix4f2, CallbackInfo ci
-    ) {
-        if (PortalRendering.isRendering()) {
-            FrontClipping.disableClipping();
-            MyRenderHelper.recoverFaceCulling();
-            
-            if (IPGlobal.enableDepthClampForPortalRendering) {
-                CHelper.disableDepthClamp();
-            }
-        }
-    }
-    
-    @Inject(
-        method = "Lnet/minecraft/client/renderer/LevelRenderer;setupRender(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;ZZ)V",
-        at = @At("HEAD"),
-        cancellable = true
-    )
-    private void onSetupTerrainBegin(
-        Camera camera, Frustum frustum, boolean hasForcedFrustum, boolean spectator,
-        CallbackInfo ci
-    ) {
-        if (WorldRenderInfo.isRendering()) {
-            if (level.dimension() != RenderStates.originalPlayerDimension) {
-                sectionRenderDispatcher.setCamera(camera.getPosition());
-            }
-        }
-        
-        if (ip_allowOverrideTerrainSetup()) {
-            if (WorldRenderInfo.isRendering()) {
-                Profiler.get().push("ip_terrain_setup");
-                VisibleSectionDiscovery.discoverVisibleSections(
-                    level, ((ImmPtlViewArea) viewArea),
-                    camera,
-                    new Frustum(frustum).offsetToFullyIncludeCameraCube(8),
-                    visibleSections
-                );
-                Profiler.get().pop();
-                
-                ci.cancel();
-            }
-        }
-    }
-    
-    private boolean ip_allowOverrideTerrainSetup() {
-        return !SodiumInterface.invoker.isSodiumPresent()
-            && !IrisInterface.invoker.isRenderingShadowMap();
-    }
-    
-    @Inject(
-        method = "Lnet/minecraft/client/renderer/LevelRenderer;setupRender(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;ZZ)V",
-        at = @At("RETURN"),
-        cancellable = true
-    )
-    private void onSetupTerrainEnd(
-        Camera camera, Frustum frustum, boolean hasForcedFrustum, boolean spectator,
-        CallbackInfo ci
-    ) {
-        if (!WorldRenderInfo.isRendering()) {
-            if (ip_allowOverrideTerrainSetup()) {
-                if (MyGameRenderer.vanillaTerrainSetupOverride > 0) {
-                    MyGameRenderer.vanillaTerrainSetupOverride--;
-                    
-                    Profiler.get().push("ip_terrain_setup");
-                    VisibleSectionDiscovery.discoverVisibleSections(
-                        level, ((ImmPtlViewArea) viewArea),
-                        camera,
-                        new Frustum(frustum).offsetToFullyIncludeCameraCube(8),
-                        visibleSections
-                    );
-                    Profiler.get().pop();
-                }
-                else if (IPGlobal.alwaysOverrideTerrainSetup) {
-                    // debug
-                    Profiler.get().push("ip_terrain_setup_debug");
-                    VisibleSectionDiscovery.discoverVisibleSections(
-                        level, ((ImmPtlViewArea) viewArea),
-                        camera,
-                        new Frustum(frustum).offsetToFullyIncludeCameraCube(8),
-                        visibleSections
-                    );
-                    Profiler.get().pop();
-                }
-            }
-        }
-    }
-    
-    @Redirect(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lcom/mojang/blaze3d/systems/RenderSystem;clear(IZ)V",
-            remap = false
-        )
-    )
-    private void redirectClearing(int int_1, boolean boolean_1) {
-        if (!IPCGlobal.renderer.replaceFrameBufferClearing()) {
-            RenderSystem.clear(int_1, boolean_1);
-        }
-    }
-    
-    @Redirect(
-        method = "allChanged",
-        at = @At(
-            value = "NEW",
-            target = "(Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher;Lnet/minecraft/world/level/Level;ILnet/minecraft/client/renderer/LevelRenderer;)Lnet/minecraft/client/renderer/ViewArea;"
-        )
-    )
-    private ViewArea redirectConstructingBuildChunkStorage(
-        SectionRenderDispatcher chunkBuilder_1,
-        Level world_1,
-        int int_1,
-        LevelRenderer worldRenderer_1
-    ) {
-        if (IPCGlobal.useHackedChunkRenderDispatcher) {
-            return new ImmPtlViewArea(
-                chunkBuilder_1, world_1, int_1, worldRenderer_1
-            );
+
+    /**
+     * Switch the section list fields to the lists of the view being rendered.
+     * Called at the head of every method that accesses the lists from outside {@link LevelRenderer#render}.
+     */
+    @Unique
+    private void ip_selectSectionLists() {
+        if (PortalViewRenderer.isRenderingPortalView()) {
+            visibleSections = ip_viewVisibleSections;
+            nearbyVisibleSections = ip_viewNearbyVisibleSections;
         }
         else {
-            return new ViewArea(
-                chunkBuilder_1, world_1, int_1, worldRenderer_1
-            );
+            visibleSections = ip_mainVisibleSections;
+            nearbyVisibleSections = ip_mainNearbyVisibleSections;
         }
     }
-    
-    // @Inject does not allow getting the entity reference
-    // maybe needs Mixin Extra
-    @Redirect(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/LevelRenderer;renderEntity(Lnet/minecraft/world/entity/Entity;DDDFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;)V"
-        )
-    )
-    private void redirectRenderEntity(
-        LevelRenderer worldRenderer,
-        Entity entity,
-        double cameraX,
-        double cameraY,
-        double cameraZ,
-        float partialTick,
-        PoseStack matrixStack,
-        MultiBufferSource vertexConsumerProvider
-    ) {
-        CrossPortalEntityRenderer.beforeRenderingEntity(entity, matrixStack);
-        renderEntity(
-            entity,
-            cameraX, cameraY, cameraZ,
-            partialTick,
-            matrixStack, vertexConsumerProvider
-        );
-        CrossPortalEntityRenderer.afterRenderingEntity(entity);
+
+    @Unique
+    private boolean ip_isPortalViewWithMainLevelRenderer() {
+        return VisibleSectionDiscovery.isRenderingPortalViewWithMainLevelRenderer((LevelRenderer) (Object) this);
     }
-    
-    @Inject(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSnowAndRain(Lnet/minecraft/client/renderer/LightTexture;FDDD)V"
-        )
-    )
-    private void beforeRenderingWeather(
-        DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f modelView, Matrix4f matrix4f2, CallbackInfo ci
-    ) {
-        if (PortalRendering.isRendering()) {
-            FrontClipping.setupInnerClipping(
-                PortalRendering.getActiveClippingPlane(),
-                modelView, 0
-            );
-            RenderStates.isRenderingPortalWeather = true;
+
+    @Inject(method = "visibleSections", at = @At("HEAD"))
+    private void onVisibleSections(CallbackInfoReturnable<ObjectArrayList<SectionRenderDispatcher.RenderSection>> cir) {
+        ip_selectSectionLists();
+    }
+
+    @Inject(method = "nearbyVisibleSections", at = @At("HEAD"))
+    private void onNearbyVisibleSections(CallbackInfoReturnable<ObjectArrayList<SectionRenderDispatcher.RenderSection>> cir) {
+        ip_selectSectionLists();
+    }
+
+    @Inject(method = "clearVisibleSections", at = @At("HEAD"))
+    private void onClearVisibleSections(CallbackInfo ci) {
+        ip_selectSectionLists();
+    }
+
+    @Inject(method = "render", at = @At("HEAD"))
+    private void onRenderHead(CallbackInfo ci) {
+        ip_selectSectionLists();
+    }
+
+    // the sections are released, don't keep them in the view lists
+    @Inject(method = "resetLevelRenderData", at = @At("HEAD"))
+    private void onResetLevelRenderData(CallbackInfo ci) {
+        ip_viewVisibleSections.clear();
+        ip_viewNearbyVisibleSections.clear();
+    }
+
+    /**
+     * During a portal view, LevelExtractor.extract/applyFrustum get the graph from here.
+     * {@link LevelRenderer#render} uses the field directly, so it still updates the real graph.
+     */
+    @Inject(method = "sectionOcclusionGraph", at = @At("HEAD"), cancellable = true)
+    private void onGetSectionOcclusionGraph(CallbackInfoReturnable<SectionOcclusionGraph> cir) {
+        if (PortalViewRenderer.isRenderingPortalView()) {
+            if (ip_portalViewOcclusionGraph == null) {
+                ip_portalViewOcclusionGraph = new VisibleSectionDiscovery.PortalViewOcclusionGraph(
+                    (LevelRenderer) (Object) this, sectionOcclusionGraph
+                );
+            }
+            cir.setReturnValue(ip_portalViewOcclusionGraph);
         }
     }
-    
-    @Inject(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSnowAndRain(Lnet/minecraft/client/renderer/LightTexture;FDDD)V",
-            shift = At.Shift.AFTER
-        )
-    )
-    private void afterRenderingWeather(
-        DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f matrix4f, Matrix4f matrix4f2, CallbackInfo ci
-    ) {
-        if (PortalRendering.isRendering()) {
-            FrontClipping.disableClipping();
-            RenderStates.isRenderingPortalWeather = false;
-        }
-    }
-    
-    //avoid render glowing entities when rendering portal
-    @Redirect(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/Minecraft;shouldEntityAppearGlowing(Lnet/minecraft/world/entity/Entity;)Z"
-        )
-    )
-    private boolean redirectGlowing(Minecraft client, Entity entity) {
-        if (WorldRenderInfo.isRendering()) {
-            return false;
-        }
-        return client.shouldEntityAppearGlowing(entity);
-    }
-    
-    // sometimes we change renderDistance but we don't want to reload it
-    @Inject(method = "allChanged", at = @At("HEAD"), cancellable = true)
-    private void onReloadStarted(CallbackInfo ci) {
-        if (WorldRenderInfo.isRendering()) {
-            Helper.log("world renderer reloading cancelled during portal rendering");
+
+    /**
+     * Don't re-center the main view's ViewArea to the portal view camera
+     * (that resets all the sections that move in the grid, and invalidates the occlusion graph),
+     * and don't change the camera position used for compile task priority.
+     */
+    @Inject(method = "repositionCamera", at = @At("HEAD"), cancellable = true)
+    private void onRepositionCamera(CameraRenderState camera, CallbackInfo ci) {
+        if (ip_isPortalViewWithMainLevelRenderer()) {
             ci.cancel();
         }
     }
-    
-    //reload other world renderers when the main world renderer is reloaded
-    @Inject(method = "allChanged", at = @At("TAIL"))
-    private void onReloadFinished(CallbackInfo ci) {
-        LevelRenderer this_ = (LevelRenderer) (Object) this;
-        
-        if (ClientWorldLoader.getIsCreatingClientWorld()) {
+
+    /**
+     * Don't update the main view's occlusion graph from the portal view camera.
+     * The loaded chunk and empty section changes are still applied,
+     * because the view's extraction consumed them from the ClientChunkCache.
+     */
+    @WrapOperation(
+        method = "render",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/SectionOcclusionGraph;update(Lnet/minecraft/client/renderer/state/level/CameraRenderState;ILnet/minecraft/client/renderer/state/level/ChunkLoadingRenderState;)V"
+        )
+    )
+    private void wrapSectionOcclusionGraphUpdate(
+        SectionOcclusionGraph graph, CameraRenderState camera, int fov,
+        ChunkLoadingRenderState chunkLoadingRenderState, Operation<Void> original
+    ) {
+        if (ip_isPortalViewWithMainLevelRenderer()) {
+            graph.updateLoadedChunks(
+                chunkLoadingRenderState.addedLoadedChunks, chunkLoadingRenderState.removedLoadedChunks
+            );
+            graph.updateEmptySections(
+                chunkLoadingRenderState.addedEmptySections, chunkLoadingRenderState.removedEmptySections
+            );
             return;
         }
-        
-        Validate.isTrue(Minecraft.getInstance().levelRenderer == this_);
-        
-        ClientWorldLoader._onWorldRendererReloaded();
+        original.call(graph, camera, fov, chunkLoadingRenderState);
     }
-    
-    @Inject(
-        method = "renderSky", at = @At("HEAD"), cancellable = true
-    )
-    private void onRenderSkyBegin(
-        Matrix4f modelView, Matrix4f matrix4f, float partialTick, Camera camera,
-        boolean isFoggy, Runnable runnable, CallbackInfo ci
-    ) {
-        if (WorldRenderInfo.isRendering()) {
-            if (!WorldRenderInfo.getTopRenderInfo().doRenderSky) {
-                if (!IrisInterface.invoker.isShaders()) {
-                    ci.cancel();
-                }
-            }
-        }
-        
-        if (PortalRendering.isRenderingOddNumberOfMirrors()) {
-            MyRenderHelper.applyMirrorFaceCulling();
+
+    /**
+     * Don't resort the main view's translucent sections for the portal view camera.
+     * (The dirty sections found by the view are still compiled.)
+     */
+    @Inject(method = "scheduleTranslucentSectionResort", at = @At("HEAD"), cancellable = true)
+    private void onScheduleTranslucentSectionResort(Vec3 cameraPos, CallbackInfo ci) {
+        if (ip_isPortalViewWithMainLevelRenderer()) {
+            ci.cancel();
         }
     }
-    
-    @Inject(
-        method = "renderSky",
-        at = @At("RETURN")
-    )
-    private void onRenderSkyEnd(
-        Matrix4f modelView, Matrix4f matrix4f, float f, Camera camera,
-        boolean bl, Runnable runnable, CallbackInfo ci
-    ) {
-        MyRenderHelper.recoverFaceCulling();
-    }
-    
-    // correct the eye position for sky rendering
-    @Redirect(
-        method = "renderSky",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/player/LocalPlayer;getEyePosition(F)Lnet/minecraft/world/phys/Vec3;"
-        )
-    )
-    private Vec3 redirectGetEyePositionInSkyRendering(LocalPlayer player, float partialTicks) {
-        if (WorldRenderInfo.isRendering()) {
-            return WorldRenderInfo.getCameraPos();
-        }
-        return player.getEyePosition(partialTicks);
-    }
-    
-    // vanilla clears translucentFramebuffer even when transparencyShader is null
-    // it makes the framebuffer to be wrongly bound in fabulous mode
-    @Redirect(
-        method = "renderLevel",
-        at = @At(
-            value = "FIELD",
-            target = "Lnet/minecraft/client/renderer/LevelRenderer;translucentTarget:Lcom/mojang/blaze3d/pipeline/RenderTarget;"
-        )
-    )
-    private RenderTarget redirectTranslucentFramebuffer(LevelRenderer this_) {
-        if (PortalRendering.isRendering()) {
-            return null;
-        }
-        else {
-            return translucentTarget;
-        }
-    }
-    
-    // if not in spectator mode, when the camera is in block chunk culling will cull chunks wrongly
+
+    // don't render sky in fuse view portals (WorldRenderInfo.doRenderSky)
     @ModifyVariable(
-        method = "Lnet/minecraft/client/renderer/LevelRenderer;setupRender(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;ZZ)V",
+        method = "render",
         at = @At("HEAD"),
         argsOnly = true,
-        ordinal = 1
+        ordinal = 1 // renderOutline, shouldRenderSky, consistentDepthRequired
     )
-    private boolean modifyIsSpectator(boolean value) {
-        if (WorldRenderInfo.isRendering()) {
-            return true;
-        }
-        return value;
-    }
-    
-    // the captured lambda uses the net handler's world field
-    // so switch that correctly
-    @Redirect(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/multiplayer/ClientLevel;pollLightUpdates()V"
-        )
-    )
-    private void redirectRunQueuedChunkUpdates(ClientLevel world) {
-        ClientWorldLoader.withSwitchedWorld(
-            world, world::pollLightUpdates
-        );
-    }
-    
-    /**
-     * when rendering portal, it won't call {@link ViewArea#repositionCamera(double, double)}
-     * So {@link ViewArea#getRenderSectionAt} will return incorrect result
-     */
-    @Inject(
-        method = "isSectionCompiled",
-        at = @At("HEAD"),
-        cancellable = true
-    )
-    private void onIsChunkCompiled(BlockPos blockPos, CallbackInfoReturnable<Boolean> cir) {
-        if (PortalRendering.isRendering()) {
-            if (!SodiumInterface.invoker.isSodiumPresent()) {
-                if (viewArea instanceof ImmPtlViewArea immPtlViewArea) {
-                    cir.setReturnValue(ip_isChunkCompiled(immPtlViewArea, blockPos));
-                }
+    private boolean modifyShouldRenderSky(boolean shouldRenderSky) {
+        if (PortalViewRenderer.isRenderingPortalView() && WorldRenderInfo.isRendering()) {
+            if (!WorldRenderInfo.getTopRenderInfo().doRenderSky) {
+                return false;
             }
         }
-    }
-    
-    private boolean ip_isChunkCompiled(ImmPtlViewArea immPtlViewArea, BlockPos blockPos) {
-        SectionPos sectionPos = SectionPos.of(blockPos);
-        var renderChunk = immPtlViewArea.rawGet(
-            sectionPos.x(), sectionPos.y(), sectionPos.z()
-        );
-        
-        return renderChunk != null
-            && renderChunk.compiled.get() != SectionRenderDispatcher.CompiledSection.UNCOMPILED;
-    }
-    
-    @Override
-    public EntityRenderDispatcher ip_getEntityRenderDispatcher() {
-        return entityRenderDispatcher;
-    }
-    
-    @Override
-    public ViewArea ip_getBuiltChunkStorage() {
-        return viewArea;
-    }
-    
-    @Override
-    public void ip_myRenderEntity(
-        Entity entity,
-        double cameraX,
-        double cameraY,
-        double cameraZ,
-        float partialTick,
-        PoseStack matrixStack,
-        MultiBufferSource vertexConsumerProvider
-    ) {
-        renderEntity(
-            entity, cameraX, cameraY, cameraZ, partialTick, matrixStack, vertexConsumerProvider
-        );
-    }
-    
-    @Override
-    public PostChain portal_getTransparencyShader() {
-        return transparencyChain;
-    }
-    
-    @Override
-    public void portal_setTransparencyShader(PostChain arg) {
-        transparencyChain = arg;
-    }
-    
-    @Override
-    public RenderBuffers ip_getRenderBuffers() {
-        return renderBuffers;
-    }
-    
-    @Override
-    public void ip_setRenderBuffers(RenderBuffers arg) {
-        renderBuffers = arg;
-    }
-    
-    @Override
-    public Frustum portal_getFrustum() {
-        return cullingFrustum;
-    }
-    
-    @Override
-    public void portal_setFrustum(Frustum arg) {
-        cullingFrustum = arg;
-    }
-    
-    @Override
-    public void portal_fullyDispose() {
-        deinitTransparency();
-        
-        if (starBuffer != null) {
-            starBuffer.close();
-        }
-        if (skyBuffer != null) {
-            skyBuffer.close();
-        }
-        if (darkBuffer != null) {
-            darkBuffer.close();
-        }
-        if (cloudBuffer != null) {
-            cloudBuffer.close();
-        }
-        
-        level = null;
-    }
-    
-    @Override
-    public void portal_setChunkInfoList(ObjectArrayList<SectionRenderDispatcher.RenderSection> arg) {
-        visibleSections = arg;
-    }
-    
-    @Override
-    public ObjectArrayList<SectionRenderDispatcher.RenderSection> portal_getChunkInfoList() {
-        return visibleSections;
+        return shouldRenderSky;
     }
 }

@@ -3,6 +3,7 @@ package qouteall.imm_ptl.core.mixin.client.render.optimization;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -54,6 +55,19 @@ public class MixinFrustum implements IEFrustum {
         }
     }
     
+    // Frustum.set copies another frustum (e.g. Camera -> CameraRenderState.cullFrustum)
+    @Inject(
+        method = "set",
+        at = @At("RETURN")
+    )
+    private void onFrustumSet(Frustum other, CallbackInfo ci) {
+        MixinFrustum otherFrustum = (MixinFrustum) (Object) other;
+        portal_camX = otherFrustum.portal_camX;
+        portal_camY = otherFrustum.portal_camY;
+        portal_camZ = otherFrustum.portal_camZ;
+        portal_frustumCuller = otherFrustum.portal_frustumCuller;
+    }
+    
     @Inject(
         method = "Lnet/minecraft/client/renderer/culling/Frustum;prepare(DDD)V",
         at = @At("TAIL")
@@ -73,16 +87,18 @@ public class MixinFrustum implements IEFrustum {
         portal_camZ = camZ;
     }
     
+    // the private cubeInFrustum(DDDDDD)I returns a FrustumIntersection result,
+    // -2 (INSIDE) and -1 (INTERSECT) mean visible, a plane index (>= 0) means outside
     @Inject(
-        method = "cubeInFrustum",
+        method = "cubeInFrustum(DDDDDD)I",
         at = @At("HEAD"),
         cancellable = true
     )
     private void onCubeInFrustum(
         double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
-        CallbackInfoReturnable<Boolean> cir
+        CallbackInfoReturnable<Integer> cir
     ) {
-        if (ip_canDetermineInvisibleWithCamCoord(
+        if (portal_frustumCuller != null && ip_canDetermineInvisibleWithCamCoord(
             (float) (minX - portal_camX),
             (float) (minY - portal_camY),
             (float) (minZ - portal_camZ),
@@ -90,7 +106,7 @@ public class MixinFrustum implements IEFrustum {
             (float) (maxY - portal_camY),
             (float) (maxZ - portal_camZ)
         )) {
-            cir.setReturnValue(false);
+            cir.setReturnValue(0);
         }
     }
     
@@ -100,7 +116,7 @@ public class MixinFrustum implements IEFrustum {
         at = @At("RETURN")
     )
     private void onCalculateFrustumReturn(
-        Matrix4f matrix4f, Matrix4f matrix4f2, CallbackInfo ci
+        Matrix4fc modelView, Matrix4f projection, CallbackInfo ci
     ) {
         viewVector.normalize();
     }
@@ -109,6 +125,9 @@ public class MixinFrustum implements IEFrustum {
     public boolean ip_canDetermineInvisibleWithCamCoord(
         float minX, float minY, float minZ, float maxX, float maxY, float maxZ
     ) {
+        if (portal_frustumCuller == null) {
+            return false;
+        }
         return portal_frustumCuller.canDetermineInvisibleWithCameraCoord(
             minX, minY, minZ, maxX, maxY, maxZ
         );
