@@ -164,9 +164,8 @@ public abstract class NetherPortalLikeForm extends PortalGenForm {
     
         if (!canForcePlace && airCubePlacement == null) {
             if (triggeringEntity instanceof ServerPlayer player) {
-                player.displayClientMessage(
-                    Component.translatable("imm_ptl.no_place_to_generate_portal"),
-                    false
+                player.sendSystemMessage(
+                    Component.translatable("imm_ptl.no_place_to_generate_portal")
                 );
             }
         }

@@ -4,7 +4,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.InsideBlockEffectApplier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -45,8 +47,13 @@ public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
     private Level level;
     
     @Shadow
-    protected abstract Vec3 collide(Vec3 vec3d_1);
-    
+    private Vec3 collide(Vec3 vec3d_1) {
+        throw new AssertionError();
+    }
+
+    @Shadow
+    protected abstract AABB makeBoundingBox(Vec3 position);
+
     @Shadow
     public abstract Component getName();
     
@@ -151,30 +158,40 @@ public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
         }
     }
     
+    // In 26.x, checkInsideBlocks()V is replaced by the movement-based checkInsideBlocks.
+    // The per-step method uses makeBoundingBox(to) as the checking box.
+    // Use the active collision box (the part of box that's not behind the colliding portal) instead.
     @Redirect(
-        method = "Lnet/minecraft/world/entity/Entity;checkInsideBlocks()V",
+        method = "checkInsideBlocks(Lnet/minecraft/world/phys/Vec3;Lnet/minecraft/world/phys/Vec3;Lnet/minecraft/world/entity/InsideBlockEffectApplier$StepBasedCollector;Lit/unimi/dsi/fastutil/longs/LongSet;I)I",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/world/entity/Entity;getBoundingBox()Lnet/minecraft/world/phys/AABB;"
+            target = "Lnet/minecraft/world/entity/Entity;makeBoundingBox(Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/AABB;"
         )
     )
-    private AABB redirectBoundingBoxInCheckingBlockCollision(Entity entity) {
-        return ip_getActiveCollisionBox(entity.getBoundingBox());
+    private AABB redirectBoundingBoxInCheckingBlockCollision(Entity entity, Vec3 pos) {
+        AABB originalBox = makeBoundingBox(pos);
+        AABB activeCollisionBox = ip_getActiveCollisionBox(originalBox);
+        // if it's null, the HEAD injection below already cancelled
+        return activeCollisionBox == null ? originalBox : activeCollisionBox;
     }
-    
+
     @Inject(
-        method = "checkInsideBlocks",
-        at = @At(
-            value = "INVOKE_ASSIGN",
-            target = "Lnet/minecraft/world/entity/Entity;getBoundingBox()Lnet/minecraft/world/phys/AABB;",
-            shift = At.Shift.AFTER
-        ),
-        locals = LocalCapture.CAPTURE_FAILHARD,
+        method = "checkInsideBlocks(Lnet/minecraft/world/phys/Vec3;Lnet/minecraft/world/phys/Vec3;Lnet/minecraft/world/entity/InsideBlockEffectApplier$StepBasedCollector;Lit/unimi/dsi/fastutil/longs/LongSet;I)I",
+        at = @At("HEAD"),
         cancellable = true
     )
-    private void onCheckInsideBlocks(CallbackInfo ci, AABB box) {
+    private void onCheckInsideBlocks(
+        Vec3 from, Vec3 to,
+        InsideBlockEffectApplier.StepBasedCollector effectCollector,
+        LongSet visitedBlocks, int maxMovementIterations,
+        CallbackInfoReturnable<Integer> cir
+    ) {
+        if (ip_portalCollisionHandler == null) {
+            return;
+        }
+        AABB box = ip_getActiveCollisionBox(makeBoundingBox(to));
         if (box == null) {
-            ci.cancel();
+            cir.setReturnValue(0);
         }
     }
     
@@ -272,7 +289,7 @@ public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
             ip_portalCollisionHandler.update(this_);
         }
         
-        if (level.isClientSide) {
+        if (level.isClientSide()) {
             IPMcHelper.onClientEntityTick(this_);
         }
     }
@@ -330,10 +347,10 @@ public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
             ) {
                 this.blockPosition = new BlockPos(bx, by, bz);
                 this.inBlockState = null;
-                if (SectionPos.blockToSectionCoord(bx) != this.chunkPosition.x
-                    || SectionPos.blockToSectionCoord(bz) != this.chunkPosition.z
+                if (SectionPos.blockToSectionCoord(bx) != this.chunkPosition.x()
+                    || SectionPos.blockToSectionCoord(bz) != this.chunkPosition.z()
                 ) {
-                    this.chunkPosition = new ChunkPos(this.blockPosition);
+                    this.chunkPosition = ChunkPos.containing(this.blockPosition);
                 }
             }
         }

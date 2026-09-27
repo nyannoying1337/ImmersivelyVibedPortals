@@ -23,8 +23,8 @@ public abstract class MixinServerPlayer extends Player implements IEServerPlayer
     @Shadow
     private boolean isChangingDimension;
     
-    public MixinServerPlayer(Level level, BlockPos blockPos, float f, GameProfile gameProfile) {
-        super(level, blockPos, f, gameProfile);
+    public MixinServerPlayer(Level level, GameProfile gameProfile) {
+        super(level, gameProfile);
     }
     
     @Shadow protected abstract void triggerDimensionChangeTriggers(ServerLevel origin);
@@ -36,7 +36,7 @@ public abstract class MixinServerPlayer extends Player implements IEServerPlayer
     
     @Override
     public void ip_startRidingWithoutTeleportRequest(Entity newVehicle) {
-        super.startRiding(newVehicle, true);
+        super.startRiding(newVehicle, true, true);
     }
     
     /**

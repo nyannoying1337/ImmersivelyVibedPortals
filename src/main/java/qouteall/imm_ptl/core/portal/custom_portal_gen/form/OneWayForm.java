@@ -3,6 +3,7 @@ package qouteall.imm_ptl.core.portal.custom_portal_gen.form;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -81,7 +82,7 @@ public class OneWayForm extends PortalGenForm {
             NetherPortalGeneration.fillInPlaceHolderBlocks(fromWorld, fromShape);
         }
         
-        GeneralBreakablePortal portal = GeneralBreakablePortal.ENTITY_TYPE.create(fromWorld);
+        GeneralBreakablePortal portal = GeneralBreakablePortal.ENTITY_TYPE.create(fromWorld, EntitySpawnReason.EVENT);
         Validate.notNull(portal);
         fromShape.initPortalPosAxisShape(portal, Direction.AxisDirection.POSITIVE);
         

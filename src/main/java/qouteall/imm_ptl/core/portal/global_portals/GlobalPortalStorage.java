@@ -5,6 +5,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -24,6 +25,10 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.saveddata.SavedDataType;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.util.ProblemReporter;
 import org.apache.commons.lang3.Validate;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -94,20 +99,27 @@ public class GlobalPortalStorage extends SavedData {
     public static GlobalPortalStorage get(
         ServerLevel world
     ) {
-        return world.getDataStorage().computeIfAbsent(
-            new SavedData.Factory<>(
-                () -> {
-                    LOGGER.info("Global portal storage initialized {}", world.dimension().identifier());
-                    return new GlobalPortalStorage(world);
-                },
-                (nbt, holderLookup) -> {
+        return world.getDataStorage().computeIfAbsent(createSavedDataType(world));
+    }
+
+    // TODO(26.3): saved data files are now stored at data/<namespace>/<path>.dat,
+    //  so the old saves' data/global_portal.dat is not read. It may need migration.
+    private static SavedDataType<GlobalPortalStorage> createSavedDataType(ServerLevel world) {
+        return new SavedDataType<>(
+            Identifier.fromNamespaceAndPath("immersive_portals", "global_portal"),
+            () -> {
+                LOGGER.info("Global portal storage initialized {}", world.dimension().identifier());
+                return new GlobalPortalStorage(world);
+            },
+            CompoundTag.CODEC.xmap(
+                nbt -> {
                     GlobalPortalStorage globalPortalStorage = new GlobalPortalStorage(world);
                     globalPortalStorage.fromNbt(nbt);
                     return globalPortalStorage;
                 },
-                null
+                storage -> storage.save(new CompoundTag(), world.registryAccess())
             ),
-            "global_portal"
+            null // Fabric API allows null DataFixTypes
         );
     }
     
@@ -208,13 +220,13 @@ public class GlobalPortalStorage extends SavedData {
         data = newData;
         
         if (tag.contains("version")) {
-            version = tag.getInt("version");
+            version = tag.getIntOr("version", 0);
         }
         
         if (tag.contains("bedrockReplacement")) {
             bedrockReplacement = NbtUtils.readBlockState(
                 currWorld.holderLookup(Registries.BLOCK),
-                tag.getCompound("bedrockReplacement")
+                tag.getCompoundOrEmpty("bedrockReplacement")
             );
         }
         else {
@@ -229,12 +241,12 @@ public class GlobalPortalStorage extends SavedData {
         Level currWorld
     ) {
         /**{@link CompoundTag#getType()}*/
-        ListTag listTag = tag.getList("data", 10);
+        ListTag listTag = tag.getListOrEmpty("data");
         
         List<Portal> newData = new ArrayList<>();
         
         for (int i = 0; i < listTag.size(); i++) {
-            CompoundTag compoundTag = listTag.getCompound(i);
+            CompoundTag compoundTag = listTag.getCompoundOrEmpty(i);
             Portal e = readPortalFromTag(currWorld, compoundTag);
             if (e != null) {
                 newData.add(e);
@@ -247,11 +259,13 @@ public class GlobalPortalStorage extends SavedData {
     }
     
     private static Portal readPortalFromTag(Level currWorld, CompoundTag compoundTag) {
-        Identifier entityId = McHelper.newResourceLocation(compoundTag.getString("entity_type"));
-        EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.get(entityId);
-        
-        Entity e = entityType.create(currWorld);
-        e.load(compoundTag);
+        Identifier entityId = McHelper.newResourceLocation(compoundTag.getStringOr("entity_type", ""));
+        EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(entityId);
+
+        Entity e = entityType.create(currWorld, EntitySpawnReason.LOAD);
+        try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(LOGGER)) {
+            e.load(TagValueInput.create(reporter, currWorld.registryAccess(), compoundTag));
+        }
         
         ((Portal) e).isGlobalPortal = true;
         
@@ -262,7 +276,6 @@ public class GlobalPortalStorage extends SavedData {
         return (Portal) e;
     }
     
-    @Override
     public @NotNull CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         if (data == null) {
             return tag;
@@ -274,8 +287,12 @@ public class GlobalPortalStorage extends SavedData {
         
         for (Portal portal : data) {
             Validate.isTrue(portal.level() == currWorld);
-            CompoundTag portalTag = new CompoundTag();
-            portal.saveWithoutId(portalTag);
+            CompoundTag portalTag;
+            try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(LOGGER)) {
+                TagValueOutput output = TagValueOutput.createWithContext(reporter, currWorld.registryAccess());
+                portal.saveWithoutId(output);
+                portalTag = output.buildResult();
+            }
             portalTag.putString(
                 "entity_type",
                 EntityType.getKey(portal.getType()).toString()

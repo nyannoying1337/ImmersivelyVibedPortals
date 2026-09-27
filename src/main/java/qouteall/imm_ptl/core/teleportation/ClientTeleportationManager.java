@@ -497,7 +497,7 @@ public class ClientTeleportationManager {
             ((IEParticleManager) client.particleEngine).ip_setWorld(toWorld);
         }
         
-        client.getBlockEntityRenderDispatcher().setLevel(toWorld);
+        // in 26.x the BlockEntityRenderDispatcher no longer holds a level, nothing to switch
         
         if (vehicle != null) {
             Vec3 offset = McHelper.getVehicleOffsetFromPassenger(vehicle, player);
@@ -511,7 +511,7 @@ public class ClientTeleportationManager {
                 player.position().add(offset),
                 McHelper.lastTickPosOf(player).add(offset)
             );
-            player.startRiding(vehicle, true);
+            player.startRiding(vehicle, true, true);
         }
         
         Helper.log(String.format(
@@ -635,7 +635,7 @@ public class ClientTeleportationManager {
             return;
         }
         
-        Vec3 levitationVec = Vec3.atLowerCornerOf(levitationDir.getNormal());
+        Vec3 levitationVec = Vec3.atLowerCornerOf(levitationDir.getUnitVec3i());
         
         Vec3 offset = levitationVec.scale(delta);
         
@@ -711,11 +711,8 @@ public class ClientTeleportationManager {
             
             // both of them are important for Minecart
             entity.setPos(pos);
-            entity.lerpTo(
-                pos.x, pos.y, pos.z,
-                entity.getYRot(), entity.getXRot(),
-                0
-            );
+            // cancel the position interpolation (it was lerpTo with 0 steps before 26.x)
+            entity.getInterpolation().cancel();
             entity.setPos(pos);
         }
     }
