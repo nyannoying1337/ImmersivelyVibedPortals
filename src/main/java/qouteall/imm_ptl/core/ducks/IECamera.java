@@ -24,10 +24,12 @@ public interface IECamera {
      * Make this camera see the world through a portal.
      * It copies the orientation, FOV and projection of the main camera,
      * places the camera at {@code pos} in {@code level}, and sets the view rotation matrix to
-     * {@code mainViewRotation * extraTransformation} (the portal rotation/mirror/scale, may be null).
-     * The culling frustum is computed from that combined matrix.
+     * {@code mainViewRotation * extraTransformation} (the portal rotation/mirror/scale, may be null),
+     * or to {@code extraTransformation} alone if {@code replaceRotation}.
+     * The culling frustum is computed from that matrix.
      */
     void ip_setupAsPortalView(
-        Camera mainCamera, ClientLevel level, Vec3 pos, @Nullable Matrix4fc extraTransformation
+        Camera mainCamera, ClientLevel level, Vec3 pos, @Nullable Matrix4fc extraTransformation,
+        boolean replaceRotation
     );
 }

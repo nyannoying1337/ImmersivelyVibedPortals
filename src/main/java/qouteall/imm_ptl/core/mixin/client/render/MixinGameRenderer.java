@@ -27,7 +27,6 @@ import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.ducks.IEGameRenderer;
 import qouteall.imm_ptl.core.portal.animation.ClientPortalAnimationManagement;
 import qouteall.imm_ptl.core.portal.animation.StableClientTimer;
-import qouteall.imm_ptl.core.render.GuiPortalRendering;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
 import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
@@ -119,7 +118,6 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
     private void onAfterRender(CallbackInfo ci) {
         RenderStates.onTotalRenderEnd();
 
-        GuiPortalRendering._onGameRenderEnd();
 
         if (IPCGlobal.lateClientLightUpdate) {
             Profiler.get().push("ip_late_update_light");

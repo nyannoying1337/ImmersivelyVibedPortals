@@ -41,7 +41,6 @@ import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalExtension;
 import qouteall.imm_ptl.core.portal.animation.ClientPortalAnimationManagement;
 import qouteall.imm_ptl.core.portal.animation.StableClientTimer;
-import qouteall.imm_ptl.core.render.FrontClipping;
 import qouteall.imm_ptl.core.render.TransformationManager;
 import qouteall.imm_ptl.core.render.context_management.FogRendererContext;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
@@ -455,7 +454,6 @@ public class ClientTeleportationManager {
         LocalPlayer player, ClientLevel fromWorld, ClientLevel toWorld, Vec3 newEyePos
     ) {
         Validate.isTrue(!WorldRenderInfo.isRendering());
-        Validate.isTrue(!FrontClipping.isClippingEnabled);
         Validate.isTrue(!PacketRedirectionClient.getIsProcessingRedirectedMessage());
         
         Entity vehicle = player.getVehicle();

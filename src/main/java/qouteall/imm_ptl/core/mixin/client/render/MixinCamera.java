@@ -145,7 +145,8 @@ public abstract class MixinCamera implements IECamera {
     
     @Override
     public void ip_setupAsPortalView(
-        Camera mainCamera, ClientLevel newLevel, Vec3 pos, @Nullable Matrix4fc extraTransformation
+        Camera mainCamera, ClientLevel newLevel, Vec3 pos, @Nullable Matrix4fc extraTransformation,
+        boolean replaceRotation
     ) {
         MixinCamera main = (MixinCamera) (Object) mainCamera;
         
@@ -174,9 +175,15 @@ public abstract class MixinCamera implements IECamera {
         );
         
         // view rotation = main view rotation * portal transformation
-        Matrix4f viewRotation = mainCamera.getViewRotationMatrix(new Matrix4f());
-        if (extraTransformation != null) {
-            viewRotation.mul(extraTransformation);
+        Matrix4f viewRotation;
+        if (replaceRotation) {
+            viewRotation = extraTransformation == null ? new Matrix4f() : new Matrix4f(extraTransformation);
+        }
+        else {
+            viewRotation = mainCamera.getViewRotationMatrix(new Matrix4f());
+            if (extraTransformation != null) {
+                viewRotation.mul(extraTransformation);
+            }
         }
         this.cachedViewRotMatrix.set(viewRotation);
         // mark the view rotation matrix as up to date (so it's not recomputed from the quaternion)

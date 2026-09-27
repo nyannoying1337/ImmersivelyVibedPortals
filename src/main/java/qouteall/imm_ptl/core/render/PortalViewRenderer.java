@@ -68,11 +68,13 @@ public class PortalViewRenderer {
     private static int fogRenderersUsed = 0;
 
     /**
-     * A view: the main view (root) or the view through a portal.
+     * A view: the main view (root), the view through a portal, or a GUI world view.
      * {@link #childTargets} maps each portal visible in this view to the target its content was rendered into.
      */
     public static final class ViewNode {
+        public final boolean isMainView;
         public final @Nullable ViewNode parent;
+        // null for the main view and GUI world views
         public final @Nullable Portal portal;
         public final Vec3 cameraPos;
         // the product of the portals' camera transformations from the main view to this view
@@ -80,9 +82,10 @@ public class PortalViewRenderer {
         public final Map<Portal, TextureTarget> childTargets = new HashMap<>();
 
         private ViewNode(
-            @Nullable ViewNode parent, @Nullable Portal portal,
+            boolean isMainView, @Nullable ViewNode parent, @Nullable Portal portal,
             Vec3 cameraPos, @Nullable Matrix4f cameraTransformation
         ) {
+            this.isMainView = isMainView;
             this.parent = parent;
             this.portal = portal;
             this.cameraPos = cameraPos;
@@ -93,8 +96,11 @@ public class PortalViewRenderer {
     private static @Nullable ViewNode rootNode = null;
     private static @Nullable ViewNode currentNode = null;
 
+    /**
+     * True while rendering anything other than the main view (portal views and GUI world views).
+     */
     public static boolean isRenderingPortalView() {
-        return currentNode != null && currentNode.parent != null;
+        return currentNode != null && !currentNode.isMainView;
     }
 
     /**
@@ -134,12 +140,15 @@ public class PortalViewRenderer {
         }
 
         ViewNode root = new ViewNode(
-            null, null, TransformationManager.getIsometricAdjustedCameraPos(mainCamera), null
+            true, null, null, TransformationManager.getIsometricAdjustedCameraPos(mainCamera), null
         );
         rootNode = root;
 
         try {
             renderChildViews(root, mainCamera, deltaTracker);
+
+            // GUI world views submitted during the last frame
+            GuiPortalRendering._renderPendingTasks(deltaTracker);
         }
         catch (Throwable e) {
             // don't crash the game because of portal rendering
@@ -162,14 +171,14 @@ public class PortalViewRenderer {
         List<Portal> portals = collectVisiblePortals(client.gameRenderer.mainCamera().getCullFrustum());
 
         for (Portal portal : portals) {
-            TextureTarget target = targetPool.acquire(IPGlobal.portalRenderLimit);
-            if (target == null) {
-                break;
-            }
-
             ClientLevel destLevel = ClientWorldLoader.getOptionalWorld(portal.getDestDim());
             if (destLevel == null) {
                 continue;
+            }
+
+            TextureTarget target = targetPool.acquire(IPGlobal.portalRenderLimit);
+            if (target == null) {
+                break;
             }
 
             Matrix4f cameraTransformation = PortalRenderer.combineNullable(
@@ -177,14 +186,47 @@ public class PortalViewRenderer {
                 portal.getAdditionalCameraTransformation()
             );
             ViewNode child = new ViewNode(
-                node, portal,
+                false, node, portal,
                 portal.transformPoint(node.cameraPos),
                 cameraTransformation
             );
             node.childTargets.put(portal, target);
 
-            renderViewAndChildren(child, destLevel, target, mainCamera, deltaTracker);
+            WorldRenderInfo worldRenderInfo = new WorldRenderInfo.Builder()
+                .setWorld(destLevel)
+                .setCameraPos(child.cameraPos)
+                .setCameraTransformation(portal.getAdditionalCameraTransformation())
+                .setOverwriteCameraTransformation(false)
+                .setDescription(portal.getDiscriminator())
+                .setRenderDistance(PortalRenderer.getPortalRenderDistance(portal))
+                .setDoRenderHand(false)
+                .setEnableViewBobbing(true)
+                .setDoRenderSky(!portal.isFuseView())
+                .build();
+
+            renderViewAndChildren(child, destLevel, target, worldRenderInfo, false, mainCamera, deltaTracker);
         }
+    }
+
+    /**
+     * Render a world view that's not seen through a portal (e.g. for a GUI) into the target.
+     * Portals inside it are rendered too. Must be called while portal views are rendered
+     * (see {@link GuiPortalRendering#_renderPendingTasks}).
+     * The target must be window-sized and have a depth buffer.
+     */
+    public static void renderWorldIntoTarget(
+        WorldRenderInfo worldRenderInfo, RenderTarget target, DeltaTracker deltaTracker
+    ) {
+        Matrix4f transformation = worldRenderInfo.cameraTransformation == null ?
+            null : new Matrix4f(worldRenderInfo.cameraTransformation);
+        ViewNode node = new ViewNode(
+            false, null, null, worldRenderInfo.cameraPos, transformation
+        );
+        renderViewAndChildren(
+            node, worldRenderInfo.world, target, worldRenderInfo,
+            worldRenderInfo.overwriteCameraTransformation,
+            client.gameRenderer.mainCamera(), deltaTracker
+        );
     }
 
     private static List<Portal> collectVisiblePortals(Frustum frustum) {
@@ -212,12 +254,16 @@ public class PortalViewRenderer {
         return result;
     }
 
+    /**
+     * @param replaceRotation if true, the view rotation is {@code node.cameraTransformation} alone,
+     *                        otherwise the main camera's rotation times it
+     */
     private static void renderViewAndChildren(
-        ViewNode node, ClientLevel destLevel, TextureTarget target,
+        ViewNode node, ClientLevel destLevel, RenderTarget target,
+        WorldRenderInfo worldRenderInfo, boolean replaceRotation,
         Camera mainCamera, DeltaTracker deltaTracker
     ) {
-        Portal portal = node.portal;
-        assert portal != null;
+        @Nullable Portal portal = node.portal;
 
         GameRenderer gameRenderer = client.gameRenderer;
         IEGameRenderer ieGameRenderer = (IEGameRenderer) gameRenderer;
@@ -225,7 +271,7 @@ public class PortalViewRenderer {
 
         Camera viewCamera = new Camera();
         ((IECamera) viewCamera).ip_setupAsPortalView(
-            mainCamera, destLevel, node.cameraPos, node.cameraTransformation
+            mainCamera, destLevel, node.cameraPos, node.cameraTransformation, replaceRotation
         );
 
         // save the state that is switched
@@ -240,20 +286,10 @@ public class PortalViewRenderer {
         boolean oldSmartCull = client.smartCull;
         HitResult oldHitResult = client.hitResult;
 
-        PortalRendering.pushPortalLayer(portal);
-        WorldRenderInfo.pushRenderInfo(
-            new WorldRenderInfo.Builder()
-                .setWorld(destLevel)
-                .setCameraPos(node.cameraPos)
-                .setCameraTransformation(portal.getAdditionalCameraTransformation())
-                .setOverwriteCameraTransformation(false)
-                .setDescription(portal.getDiscriminator())
-                .setRenderDistance(PortalRenderer.getPortalRenderDistance(portal))
-                .setDoRenderHand(false)
-                .setEnableViewBobbing(true)
-                .setDoRenderSky(!portal.isFuseView())
-                .build()
-        );
+        if (portal != null) {
+            PortalRendering.pushPortalLayer(portal);
+        }
+        WorldRenderInfo.pushRenderInfo(worldRenderInfo);
 
         currentNode = node;
         client.level = destLevel;
@@ -280,11 +316,15 @@ public class PortalViewRenderer {
             // children may have switched the target; set it for this view
             ieGameRenderer.ip_setMainRenderTargetOverride(target);
 
-            PortalRendering.onBeginPortalWorldRendering();
+            if (portal != null) {
+                PortalRendering.onBeginPortalWorldRendering();
+            }
             Profiler.get().push("render_portal_view");
             renderCurrentView(target, renderHelper, deltaTracker);
             Profiler.get().pop();
-            PortalRendering.onEndPortalWorldRendering();
+            if (portal != null) {
+                PortalRendering.onEndPortalWorldRendering();
+            }
         }
         finally {
             // restore
@@ -300,7 +340,9 @@ public class PortalViewRenderer {
             currentNode = oldNode;
 
             WorldRenderInfo.popRenderInfo();
-            PortalRendering.popPortalLayer();
+            if (portal != null) {
+                PortalRendering.popPortalLayer();
+            }
         }
     }
 
@@ -309,7 +351,7 @@ public class PortalViewRenderer {
      * Mirrors what GameRenderer.extract() and GameRenderer.render() do for the main view.
      */
     private static void renderCurrentView(
-        TextureTarget target, DimensionRenderHelper renderHelper, DeltaTracker deltaTracker
+        RenderTarget target, DimensionRenderHelper renderHelper, DeltaTracker deltaTracker
     ) {
         GameRenderer gameRenderer = client.gameRenderer;
         IEGameRenderer ieGameRenderer = (IEGameRenderer) gameRenderer;

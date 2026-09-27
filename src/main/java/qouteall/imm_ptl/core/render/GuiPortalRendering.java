@@ -116,14 +116,8 @@ public class GuiPortalRendering {
             colorTexture, new Vector4f(0, 0, 0, 0), depthTexture, 0.0 // reversed-Z
         );
 
-        // TODO(26.3): render the world. Needs a hook in PortalViewRenderer (not owned here):
-        //  public static void renderWorldIntoTarget(WorldRenderInfo worldRenderInfo, RenderTarget target, DeltaTracker deltaTracker)
-        //  that does what renderViewAndChildren does, but for a view without a portal
-        //  (level = worldRenderInfo.world, camera at worldRenderInfo.cameraPos with
-        //  worldRenderInfo.cameraTransformation, no PortalRendering layer push, no clip plane,
-        //  WorldRenderInfo.pushRenderInfo(worldRenderInfo), no hand, portals inside rendered as children).
-        //  Then replace this TODO with a call to it, and call _renderPendingTasks from renderPortalViews.
-        LIMITED_LOGGER.invoke(() -> LOGGER.warn("[ImmPtl] GUI portal rendering is not implemented yet in 26.3"));
+
+        PortalViewRenderer.renderWorldIntoTarget(worldRenderInfo, renderTarget, deltaTracker);
     }
 
     // not API

@@ -21,7 +21,6 @@ import qouteall.imm_ptl.core.render.CrossPortalEntityRenderer;
 import qouteall.imm_ptl.core.render.ForceMainThreadRebuild;
 import qouteall.imm_ptl.core.render.GuiPortalRendering;
 import qouteall.imm_ptl.core.render.ImmPtlViewArea;
-import qouteall.imm_ptl.core.render.MyRenderHelper;
 import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.VisibleSectionDiscovery;
 import qouteall.imm_ptl.core.render.context_management.CloudContext;
@@ -73,7 +72,6 @@ public class IPModMainClient {
         
         Minecraft.getInstance().execute(() -> {
             
-            MyRenderHelper.init();
             
             PortalViewRenderer.init();
             
