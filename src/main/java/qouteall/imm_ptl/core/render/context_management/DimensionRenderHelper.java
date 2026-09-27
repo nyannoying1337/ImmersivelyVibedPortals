@@ -32,7 +32,6 @@ public class DimensionRenderHelper {
     // true for the instances that vanilla created (Minecraft.levelRenderer etc. at initialization)
     public final boolean isVanillaOriginal;
 
-    private final boolean ownsInstances;
 
     // the frame index at which the lightmap was last rendered, see RenderStates.frameIndex
     public long lightmapRenderedFrame = -1;

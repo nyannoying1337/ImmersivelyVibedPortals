@@ -1,6 +1,7 @@
 package qouteall.imm_ptl.core.mixin.client.render;
 
 import net.minecraft.client.Camera;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -22,6 +23,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.ducks.IECamera;
 import qouteall.imm_ptl.core.render.CrossPortalEntityRenderer;
+import qouteall.imm_ptl.core.render.TransformationManager;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 
@@ -86,6 +88,27 @@ public abstract class MixinCamera implements IECamera {
     @Shadow
     protected abstract void setupPerspective(float zNear, float zFar, float fov, float width, float height);
     
+    /**
+     * After teleporting through a portal with rotation, the view rotation is interpolated
+     * from the old orientation (see {@link TransformationManager}).
+     * Applied to the cached view rotation matrix, so the extracted camera state and the culling frustum use it.
+     */
+    @Inject(method = "update", at = @At("RETURN"))
+    private void onUpdateFinished(DeltaTracker deltaTracker, CallbackInfo ci) {
+        if (!TransformationManager.isAnimationRunning()) {
+            return;
+        }
+        if ((Object) this != Minecraft.getInstance().gameRenderer.mainCamera()) {
+            return;
+        }
+        Matrix4f viewRotation = getViewRotationMatrix(new Matrix4f());
+        TransformationManager.applyAnimationDelta(viewRotation);
+        this.cachedViewRotMatrix.set(viewRotation);
+        this.matrixPropertiesDirty = (this.matrixPropertiesDirty & ~1) | 2;
+        this.cullFrustum = new Frustum(viewRotation, createProjectionMatrixForCulling());
+        this.cullFrustum.prepare(position.x, position.y, position.z);
+    }
+
     @Inject(method = "alignWithEntity", at = @At("RETURN"))
     private void onAlignWithEntityFinished(float partialTicks, CallbackInfo ci) {
         Camera this_ = (Camera) (Object) this;

@@ -68,23 +68,4 @@ public class MyRenderHelper {
         }
     }
 
-    public static float transformFogDistance(float value) {
-        if (!WorldRenderInfo.isFogEnabled()) {
-            return value * 23333;
-        }
-
-        // just disable fog for fuse-view portals for now
-        if (PortalRendering.isRendering()) {
-            Portal renderingPortal = PortalRendering.getRenderingPortal();
-
-            if (renderingPortal.isFuseView()) {
-                return value * 23333;
-            }
-        }
-
-        // as non-fuse-view portals does not apply scale transformation to modelview,
-        // there is no need to transform fog distance (both with and without sodium)
-
-        return value;
-    }
 }
