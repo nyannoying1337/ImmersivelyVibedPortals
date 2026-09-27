@@ -24,9 +24,6 @@ import qouteall.imm_ptl.core.network.ImmPtlNetworkConfig;
  * The server side must write the dimension after the vanilla fields when encoding
  * (see {@link qouteall.imm_ptl.core.mixin.common.position_sync.MixinPlayerPositionLookS2CPacket}).
  */
-// TODO(26.3): MixinPlayerPositionLookS2CPacket (position_sync, not owned here) still injects into the removed
-//  ClientboundPlayerPositionPacket.write(FriendlyByteBuf). It must instead wrap STREAM_CODEC's encode
-//  the same way (write the dimension after the vanilla fields), otherwise this read will desync.
 @Mixin(ClientboundPlayerPositionPacket.class)
 public class MixinClientboundPlayerPositionPacket {
     @Shadow
