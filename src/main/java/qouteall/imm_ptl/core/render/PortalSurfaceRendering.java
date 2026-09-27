@@ -93,7 +93,7 @@ public class PortalSurfaceRendering {
         }
         renderTypes.set(index, RenderType.create(
             "immersive_portals:portal_view_" + index,
-            RenderType.builder(PORTAL_VIEW_PIPELINE)
+            RenderSetup.builder(PORTAL_VIEW_PIPELINE)
                 .withTexture("Sampler0", id)
                 .createRenderSetup()
         ));

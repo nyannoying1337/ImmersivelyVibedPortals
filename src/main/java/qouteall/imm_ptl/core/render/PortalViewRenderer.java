@@ -143,9 +143,7 @@ public class PortalViewRenderer {
         }
         catch (Throwable e) {
             // don't crash the game because of portal rendering
-            if (LIMITED_LOGGER.tryDecrement()) {
-                LOGGER.error("[ImmPtl] Error rendering portal views", e);
-            }
+            LIMITED_LOGGER.invoke(() -> LOGGER.error("[ImmPtl] Error rendering portal views", e));
         }
         finally {
             currentNode = null;
