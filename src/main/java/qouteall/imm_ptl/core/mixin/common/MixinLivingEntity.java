@@ -19,7 +19,8 @@ public class MixinLivingEntity {
         }
         if (this_.getLastHurtMob() != null) {
             if (this_.getLastHurtMob().level() != this_.level()) {
-            	this_.setLastHurtByPlayer(null);
+            	// setLastHurtMob clears the field when the target is not a LivingEntity
+            	this_.setLastHurtMob(null);
             }
         }
     }
