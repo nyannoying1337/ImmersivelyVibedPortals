@@ -102,7 +102,7 @@ public class GlobalPortalStorage extends SavedData {
         return world.getDataStorage().computeIfAbsent(createSavedDataType(world));
     }
 
-    // TODO(26.3): saved data files are now stored at data/<namespace>/<path>.dat,
+    // TODO(26.3, deferred by user): saved data files are now stored at data/<namespace>/<path>.dat,
     //  so the old saves' data/global_portal.dat is not read. It may need migration.
     private static SavedDataType<GlobalPortalStorage> createSavedDataType(ServerLevel world) {
         return new SavedDataType<>(
