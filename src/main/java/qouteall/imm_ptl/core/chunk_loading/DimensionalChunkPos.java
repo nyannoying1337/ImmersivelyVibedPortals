@@ -19,7 +19,7 @@ public class DimensionalChunkPos {
     }
     
     public DimensionalChunkPos(ResourceKey<Level> dimension, ChunkPos chunkPos) {
-        this(dimension, chunkPos.x, chunkPos.z);
+        this(dimension, chunkPos.x(), chunkPos.z());
     }
     
     public ChunkPos getChunkPos() {

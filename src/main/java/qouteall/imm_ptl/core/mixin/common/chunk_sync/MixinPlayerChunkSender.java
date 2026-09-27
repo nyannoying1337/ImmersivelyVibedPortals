@@ -43,7 +43,7 @@ public class MixinPlayerChunkSender {
     
     /**
      * Fabric API mixins this method
-     * {@link net.fabricmc.fabric.mixin.attachment.ChunkDataSenderMixin}
+     * {@link net.fabricmc.fabric.mixin.attachment.PlayerChunkSenderMixin}
      */
     @Inject(
         method = "sendNextChunks",

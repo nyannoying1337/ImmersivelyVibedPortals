@@ -7,7 +7,6 @@ import net.minecraft.network.protocol.game.ClientboundSetTimePacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import org.apache.commons.lang3.Validate;
 import qouteall.imm_ptl.core.McHelper;
@@ -51,12 +50,11 @@ public class WorldInfoSender {
         PacketRedirection.sendRedirectedMessage(
             player,
             remoteDimension,
+            // in 26.3 the day time is stored in server-global world clocks
+            // (the daylight game rule is handled by the clock manager)
             new ClientboundSetTimePacket(
                 world.getGameTime(),
-                world.getDayTime(),
-                world.getGameRules().getBoolean(
-                    GameRules.RULE_DAYLIGHT
-                )
+                world.clockManager().createFullSyncPacket().clockUpdates()
             )
         );
         

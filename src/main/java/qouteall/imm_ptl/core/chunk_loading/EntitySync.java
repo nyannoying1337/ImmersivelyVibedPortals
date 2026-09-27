@@ -59,7 +59,7 @@ public class EntitySync {
                     for (ChunkMap.TrackedEntity trackedEntity : entityTrackerMap.values()) {
                         IETrackedEntity ieTrackedEntity = (IETrackedEntity) trackedEntity;
                         
-                        long chunkPos = ieTrackedEntity.ip_getEntity().chunkPosition().toLong();
+                        long chunkPos = ieTrackedEntity.ip_getEntity().chunkPosition().pack();
                         if (distanceManager.inEntityTickingRange(chunkPos)) {
                             ieTrackedEntity.ip_sendChanges();
                         }

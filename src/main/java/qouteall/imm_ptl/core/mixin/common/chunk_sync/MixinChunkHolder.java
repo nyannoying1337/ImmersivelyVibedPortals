@@ -56,7 +56,7 @@ public class MixinChunkHolder implements IEChunkHolder {
     private List<ServerPlayer> redirectGetPlayers(ChunkHolder.PlayerProvider playerProvider, ChunkPos chunkPos, boolean boundaryOnly) {
         return ImmPtlChunkTracking.getPlayersViewingChunk(
             ((Level) levelHeightAccessor).dimension(),
-            chunkPos.x, chunkPos.z,
+            chunkPos.x(), chunkPos.z(),
             boundaryOnly
         );
     }

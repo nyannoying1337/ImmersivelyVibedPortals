@@ -1,13 +1,17 @@
 package qouteall.imm_ptl.core.mixin.common.chunk_sync;
 
-import net.minecraft.server.level.ChunkTaskPriorityQueueSorter;
-import net.minecraft.util.thread.ProcessorMailbox;
-import net.minecraft.util.thread.StrictQueue;
+import net.minecraft.server.level.ChunkTaskDispatcher;
+import net.minecraft.util.thread.PriorityConsecutiveExecutor;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(ChunkTaskPriorityQueueSorter.class)
+/**
+ * In 26.3 ChunkTaskPriorityQueueSorter was replaced by {@link ChunkTaskDispatcher}
+ * and its ProcessorMailbox by {@link PriorityConsecutiveExecutor}.
+ * (The class name is kept because it's referenced in the mixin config.)
+ */
+@Mixin(ChunkTaskDispatcher.class)
 public interface IEChunkTaskPriorityQueueSorter {
-    @Accessor("mailbox")
-    ProcessorMailbox<StrictQueue.IntRunnable> ip_getMailBox();
+    @Accessor("dispatcher")
+    PriorityConsecutiveExecutor ip_getMailBox();
 }

@@ -393,7 +393,7 @@ public class ClientDebugCommand {
             .executes(context -> {
                 Minecraft.getInstance().execute(() -> {
                     ClientWorldLoader.disposeRenderHelpers();
-                    Minecraft.getInstance().levelRenderer.allChanged();
+                    Minecraft.getInstance().levelExtractor.allChanged();
                 });
                 return 0;
             })
@@ -406,7 +406,7 @@ public class ClientDebugCommand {
                 Minecraft client = Minecraft.getInstance();
                 
                 IPGlobal.CLIENT_TASK_LIST.addTask(MyTaskList.oneShotTask(() -> {
-                    client.setScreen(IPConfigGUI.createClothConfigScreen(null));
+                    client.gui.setScreen(IPConfigGUI.createClothConfigScreen(null));
                 }));
                 return 0;
             })
@@ -888,7 +888,7 @@ public class ClientDebugCommand {
             );
         });
         
-        player.server.execute(() -> {
+        player.level().getServer().execute(() -> {
             McRemoteProcedureCall.tellClientToInvoke(
                 player,
                 "qouteall.imm_ptl.core.commands.ClientDebugCommand.TestRemoteCallable.serverToClient",

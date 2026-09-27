@@ -102,7 +102,7 @@ public class BlockManipulationServer {
         BlockHitResult blockHitResult
     ) {
         Direction side = blockHitResult.getDirection();
-        Vec3 sideVec = Vec3.atLowerCornerOf(side.getNormal());
+        Vec3 sideVec = Vec3.atLowerCornerOf(side.getUnitVec3i());
         BlockPos hitPos = blockHitResult.getBlockPos();
         Vec3 hitCenter = Vec3.atCenterOf(hitPos);
         
@@ -146,7 +146,7 @@ public class BlockManipulationServer {
             FriendlyByteBuf buf = IPMcHelper.bytesToBuf(packetBytes);
             ServerboundPlayerActionPacket packet = ServerboundPlayerActionPacket.STREAM_CODEC.decode(buf);
             
-            ServerLevel world = player.server.getLevel(dimension);
+            ServerLevel world = player.level().getServer().getLevel(dimension);
             Validate.notNull(world, "missing %s", dimension.identifier());
             
             withRedirect(
@@ -169,11 +169,11 @@ public class BlockManipulationServer {
             FriendlyByteBuf buf = IPMcHelper.bytesToBuf(packetBytes);
             ServerboundUseItemOnPacket packet = ServerboundUseItemOnPacket.STREAM_CODEC.decode(buf);
             
-            ServerLevel world = player.server.getLevel(dimension);
+            ServerLevel world = player.level().getServer().getLevel(dimension);
             Validate.notNull(world, "missing %s", dimension.identifier());
             
             withRedirect(
-                new Context(world, packet.getHitResult()),
+                new Context(world, packet.hitResult()),
                 () -> {
                     doProcessUseItemOn(world, player, packet);
                 }
@@ -237,9 +237,9 @@ public class BlockManipulationServer {
     private static void doProcessUseItemOn(
         ServerLevel world, ServerPlayer player, ServerboundUseItemOnPacket packet
     ) {
-        player.connection.ackBlockChangesUpTo(packet.getSequence());
-        InteractionHand hand = packet.getHand();
-        BlockHitResult blockHitResult = packet.getHitResult();
+        player.connection.ackBlockChangesUpTo(packet.sequence());
+        InteractionHand hand = packet.hand();
+        BlockHitResult blockHitResult = packet.hitResult();
         ResourceKey<Level> dimension = world.dimension();
         
         ItemStack itemStack = player.getItemInHand(hand);
@@ -264,8 +264,11 @@ public class BlockManipulationServer {
                 hand,
                 blockHitResult
             );
-            if (actionResult.shouldSwing()) {
-                player.swing(hand, true);
+            if (actionResult instanceof InteractionResult.Success success && success.shouldSwing()) {
+                player.swingAndResetAttackStrength(
+                    hand, itemStack.getInteractAnimation(),
+                    success.swingSource() != InteractionResult.SwingSource.PREDICTED
+                );
             }
         }
         

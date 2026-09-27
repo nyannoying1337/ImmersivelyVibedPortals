@@ -5,6 +5,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.fabricmc.fabric.impl.attachment.AttachmentTargetImpl;
 import net.fabricmc.fabric.impl.attachment.sync.AttachmentChange;
+import net.fabricmc.fabric.impl.attachment.sync.AttachmentSync;
 import net.minecraft.network.protocol.game.ClientboundChunkBatchFinishedPacket;
 import net.minecraft.network.protocol.game.ClientboundChunkBatchStartPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
@@ -110,7 +111,7 @@ public class PlayerChunkLoading {
         }
         
         ServerGamePacketListenerImpl connection = serverPlayer.connection;
-        MinecraftServer server = serverPlayer.server;
+        MinecraftServer server = serverPlayer.level().getServer();
         
         int maxSendNum = (int) Math.floor(batchQuota);
         Validate.isTrue(maxSendNum != 0);
@@ -210,7 +211,7 @@ public class PlayerChunkLoading {
     }
     
     /**
-     * Fabric API's mixin {@link net.fabricmc.fabric.mixin.attachment.ChunkDataSenderMixin}
+     * Fabric API's mixin {@link net.fabricmc.fabric.mixin.attachment.PlayerChunkSenderMixin}
      * is cancelled in {@link qouteall.imm_ptl.core.mixin.common.chunk_sync.MixinPlayerChunkSender}.
      * So manually implement it here.
      * */
@@ -222,7 +223,7 @@ public class PlayerChunkLoading {
         ((AttachmentTargetImpl) chunk).fabric_computeInitialSyncChanges(player, changes::add);
         
         if (!changes.isEmpty()) {
-            AttachmentChange.partitionAndSendPackets(changes, player);
+            AttachmentSync.trySync(changes, player);
         }
     }
     

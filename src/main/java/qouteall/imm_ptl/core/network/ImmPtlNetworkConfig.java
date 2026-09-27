@@ -157,14 +157,14 @@ public class ImmPtlNetworkConfig {
         public void handle(
             ServerConfigurationNetworking.Context context
         ) {
-            ServerConfigurationPacketListenerImpl networkHandler = context.networkHandler();
+            ServerConfigurationPacketListenerImpl networkHandler = context.packetListener();
             
             GameProfile gameProfile =
                 ((IEServerConfigurationPacketListenerImpl) networkHandler).ip_getGameProfile();
             
             LOGGER.info(
                 "Server received ImmPtl config packet. Mod version: {} Player: {} {}",
-                versionFromClient, gameProfile.getName(), gameProfile.getId()
+                versionFromClient, gameProfile.name(), gameProfile.id()
             );
             
             if (versionFromClient.isNormalVersion() && immPtlVersion.isNormalVersion()) {
@@ -204,11 +204,11 @@ public class ImmPtlNetworkConfig {
         
         LOGGER.info("Immersive Portals Core version {}", immPtlVersion);
         
-        PayloadTypeRegistry.configurationS2C().register(
+        PayloadTypeRegistry.clientboundConfiguration().register(
             S2CConfigStartPacket.TYPE, S2CConfigStartPacket.CODEC
         );
         
-        PayloadTypeRegistry.configurationC2S().register(
+        PayloadTypeRegistry.serverboundConfiguration().register(
             C2SConfigCompletePacket.TYPE, C2SConfigCompletePacket.CODEC
         );
         
@@ -236,7 +236,7 @@ public class ImmPtlNetworkConfig {
                         
                         LOGGER.warn(
                             "Fabric API's sendable channel sync detected that client does not install ImmPtl. {} {}",
-                            gameProfile.getName(), gameProfile.getId()
+                            gameProfile.name(), gameProfile.id()
                         );
                     }
                 }

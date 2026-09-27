@@ -44,7 +44,7 @@ public class MixinPlayerList {
     
     @Inject(method = "Lnet/minecraft/server/players/PlayerList;sendLevelInfo(Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/server/level/ServerLevel;)V", at = @At("RETURN"))
     private void onSendWorldInfo(ServerPlayer player, ServerLevel world, CallbackInfo ci) {
-        if (!ServerTeleportationManager.of(player.server).isFiringMyChangeDimensionEvent) {
+        if (!ServerTeleportationManager.of(player.level().getServer()).isFiringMyChangeDimensionEvent) {
             GlobalPortalStorage.onPlayerLoggedIn(player);
         }
     }
@@ -110,10 +110,10 @@ public class MixinPlayerList {
         double x, double y, double z, double distance,
         ResourceKey<Level> dimension, Packet<?> packet
     ) {
-        ChunkPos chunkPos = new ChunkPos(BlockPos.containing(new Vec3(x, y, z)));
+        ChunkPos chunkPos = ChunkPos.containing(BlockPos.containing(new Vec3(x, y, z)));
         
         var recs =
-            ImmPtlChunkTracking.getWatchRecordForChunk(dimension, chunkPos.x, chunkPos.z);
+            ImmPtlChunkTracking.getWatchRecordForChunk(dimension, chunkPos.x(), chunkPos.z());
         
         if (recs == null) {
             return;
@@ -122,11 +122,11 @@ public class MixinPlayerList {
         for (ImmPtlChunkTracking.PlayerWatchRecord rec : recs.values()) {
             if (rec.isLoadedToPlayer && rec.player != excludingPlayer) {
                 if (ImmPtlChunkTracking.isPlayerWatchingChunkWithinRadius(
-                    rec.player, dimension, chunkPos.x, chunkPos.z, (int) distance + 16
+                    rec.player, dimension, chunkPos.x(), chunkPos.z(), (int) distance + 16
                 )) {
                     rec.player.connection.send(
                         PacketRedirection.createRedirectedMessage(
-                            rec.player.getServer(),
+                            rec.player.level().getServer(),
                             dimension, (Packet<ClientGamePacketListener>) packet
                         )
                     );
