@@ -22,14 +22,11 @@ import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.block_manipulation.BlockManipulationClient;
 import qouteall.imm_ptl.core.ducks.IEEntity;
-import qouteall.imm_ptl.core.ducks.IEGameRenderer;
 import qouteall.imm_ptl.core.miscellaneous.ClientPerformanceMonitor;
 import qouteall.imm_ptl.core.mixin.client.particle.IEParticle;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.animation.StableClientTimer;
 import qouteall.imm_ptl.core.render.ForceMainThreadRebuild;
-import qouteall.imm_ptl.core.render.MyRenderHelper;
-import qouteall.imm_ptl.core.render.QueryManager;
 import qouteall.q_misc_util.Helper;
 
 import java.lang.ref.WeakReference;
@@ -64,8 +61,6 @@ public class RenderStates {
     public static Vec3 lastCameraPos = Vec3.ZERO;
     public static Vec3 cameraPosDelta = Vec3.ZERO;
     
-    public static boolean shouldForceDisableCull = false;
-    
     public static long renderStartNanoTime;
     
     public static double viewBobFactor;
@@ -78,8 +73,6 @@ public class RenderStates {
     
     public static boolean isLaggy = false;
     
-    public static boolean isRenderingEntities = false;
-    
     public static boolean renderedScalingPortal = false;
     
     public static boolean isRenderingPortalWeather = false;
@@ -89,7 +82,7 @@ public class RenderStates {
     ) {
         ClientWorldLoader.initializeIfNeeded();
         
-        Entity cameraEntity = MyRenderHelper.client.cameraEntity;
+        Entity cameraEntity = Minecraft.getInstance().getCameraEntity();
         
         if (cameraEntity == null) {
             return;
@@ -106,25 +99,21 @@ public class RenderStates {
         lastPortalRenderInfos = portalRenderInfos;
         portalRenderInfos = new ArrayList<>();
         portalsRenderedThisFrame = 0;
-        
-        FogRendererContext.update();
-        
+
         renderStartNanoTime = System.nanoTime();
         
         updateViewBobbingFactor(cameraEntity);
         
         basicProjectionMatrix = null;
-        originalCamera = MyRenderHelper.client.gameRenderer.getMainCamera();
+        // called before the portal views swap the camera, so this is the main camera
+        originalCamera = Minecraft.getInstance().gameRenderer.mainCamera();
         
         updateIsLaggy();
         
         ForceMainThreadRebuild.onPreRender();
         
         debugText = "";
-//        debugText = originalCamera.getPos().toString();
-        
-        QueryManager.queryStallCounter = 0;
-        
+
         Vec3 velocity = McHelper.getWorldVelocity(cameraEntity);
         originalPlayerBoundingBox = cameraEntity.getBoundingBox().expandTowards(
             -velocity.x, -velocity.y, -velocity.z
@@ -145,7 +134,7 @@ public class RenderStates {
         else {
             if (lastPortalRenderInfos.size() > 10) {
                 if (ClientPerformanceMonitor.getAverageFps() < 8 || ClientPerformanceMonitor.getMinimumFps() < 6) {
-                    MyRenderHelper.client.gui.setOverlayMessage(
+                    Minecraft.getInstance().gui.hud.setOverlayMessage(
                         Component.translatable("imm_ptl.laggy"),
                         false
                     );
@@ -206,11 +195,9 @@ public class RenderStates {
     
     public static void onTotalRenderEnd() {
         Minecraft client = Minecraft.getInstance();
-        IEGameRenderer gameRenderer = (IEGameRenderer) Minecraft.getInstance().gameRenderer;
-        gameRenderer.ip_setLightmapTextureManager(ClientWorldLoader
-            .getDimensionRenderHelper(client.level.dimension()).lightmapTexture);
-        
-        Vec3 currCameraPos = client.gameRenderer.getMainCamera().getPosition();
+        // the lightmap, fog renderer and camera are restored by PortalViewRenderer after each view
+
+        Vec3 currCameraPos = client.gameRenderer.mainCamera().position();
         cameraPosDelta = currCameraPos.subtract(lastCameraPos);
         if (cameraPosDelta.lengthSqr() > 1) {
             cameraPosDelta = Vec3.ZERO;
@@ -268,7 +255,6 @@ public class RenderStates {
             }
         }
         
-        result.add("Occlusion Query Stall: " + QueryManager.queryStallCounter);
         result.add("Client Perf %s %d %d".formatted(
             ClientPerformanceMonitor.level,
             ClientPerformanceMonitor.getAverageFps(),

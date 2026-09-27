@@ -3,10 +3,12 @@ package qouteall.imm_ptl.core.render;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.minecraft.client.Camera;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -14,7 +16,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.apache.commons.lang3.Validate;
-import org.joml.Matrix4f;
 import qouteall.imm_ptl.core.CHelper;
 import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.IPCGlobal;
@@ -24,318 +25,242 @@ import qouteall.imm_ptl.core.collision.PortalCollisionEntry;
 import qouteall.imm_ptl.core.collision.PortalCollisionHandler;
 import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
 import qouteall.imm_ptl.core.ducks.IEEntity;
-import qouteall.imm_ptl.core.ducks.IEWorldRenderer;
 import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalManipulation;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
-import qouteall.imm_ptl.core.render.renderer.PortalRenderer;
 import qouteall.q_misc_util.Helper;
 import qouteall.q_misc_util.my_util.Plane;
 
 import java.util.WeakHashMap;
 
+/**
+ * Renders entities that are halfway through a portal on both sides of it.
+ * <p>
+ * An entity in dimension A that collides with a portal leading to dimension B has a "projection" in B:
+ * the entity transformed by the portal. In 26.3 the projection is an extra {@link EntityRenderState}
+ * added to B's {@link LevelRenderState#entityRenderStates} while B is extracted
+ * (as the main view or as a portal view), see {@link #extractEntityProjections}.
+ * Its position is moved by the portal transformation and the rotation/scaling of the portal
+ * is applied around the entity origin when it's submitted (see {@link #applyProjectionTransformation}).
+ * <p>
+ * Clipping: in 1.21.1 the entity was clipped by a per-entity clip plane
+ * (outer clipping for the original, inner clipping for the projection).
+ * In 26.3 there is only one clip plane per view (the view's portal plane, {@link PortalClipping}),
+ * so:
+ * <ul>
+ *     <li>A projection seen through the portal it goes through is clipped correctly by the view's plane.</li>
+ *     <li>The part of the original entity that went through the portal is behind the portal surface,
+ *     which writes depth, so it's hidden when looking at the portal from the front.</li>
+ * </ul>
+ */
 @Environment(EnvType.CLIENT)
 public class CrossPortalEntityRenderer {
     private static final Minecraft client = Minecraft.getInstance();
-    
+
     //there is no weak hash set
     private static final WeakHashMap<Entity, Object> collidedEntities = new WeakHashMap<>();
-    
-    public static boolean isRenderingEntityNormally = false;
-    
-    public static boolean isRenderingEntityProjection = false;
-    
+
+    /**
+     * The render states of entity projections and the portal that transforms them.
+     * Render states are created per extraction and are not reused, so they're weakly referenced.
+     */
+    private static final WeakHashMap<EntityRenderState, Portal> projectionStates = new WeakHashMap<>();
+
     public static void init() {
         IPGlobal.POST_CLIENT_TICK_EVENT.register(CrossPortalEntityRenderer::onClientTick);
-        
+
         IPCGlobal.CLIENT_CLEANUP_EVENT.register(CrossPortalEntityRenderer::cleanUp);
-        
+
         ClientWorldLoader.CLIENT_DIMENSION_DYNAMIC_REMOVE_EVENT.register(dim -> cleanUp());
     }
-    
+
     private static void cleanUp() {
         collidedEntities.clear();
+        projectionStates.clear();
     }
-    
+
     private static void onClientTick() {
         collidedEntities.entrySet().removeIf(entry -> {
             Entity entity = entry.getKey();
             return entity.isRemoved() || !((IEEntity) entity).ip_isCollidingWithPortal();
         });
     }
-    
+
     public static void onEntityTickClient(Entity entity) {
         if (entity instanceof Portal) {
             return;
         }
-        
+
         if (((IEEntity) entity).ip_isCollidingWithPortal()) {
             collidedEntities.put(entity, null);
         }
     }
-    
-    public static void onBeginRenderingEntitiesAndBlockEntities(Matrix4f modelView) {
-        isRenderingEntityNormally = true;
-        
-        if (PortalRendering.isRendering()) {
-            FrontClipping.setupInnerClipping(
-                PortalRendering.getActiveClippingPlane(),
-                modelView, 0
-            );
-        }
-    }
-    
+
     private static boolean isCrossPortalRenderingEnabled() {
         if (IrisInterface.invoker.isIrisPresent()) {
             return false;
         }
         return IPGlobal.correctCrossPortalEntityRendering;
     }
-    
-    public static void onEndRenderingEntitiesAndBlockEntities(PoseStack matrixStack) {
-        isRenderingEntityNormally = false;
-        
-        FrontClipping.disableClipping();
-        
+
+    /**
+     * Adds the projections of the entities that are halfway through a portal
+     * leading into the level that is being extracted.
+     * Called by the extractor of the current dimension after it extracted the visible entities
+     * (see {@link qouteall.imm_ptl.core.mixin.client.render.MixinLevelExtractor_CrossPortalEntity}).
+     * {@link Minecraft#level} and the game renderer's camera are the ones of the current view.
+     */
+    public static void extractEntityProjections(
+        Camera camera, DeltaTracker deltaTracker, LevelRenderState output
+    ) {
         if (!isCrossPortalRenderingEnabled()) {
             return;
         }
-        
-        renderEntityProjections(matrixStack);
-    }
-    
-    public static void beforeRenderingEntity(Entity entity, PoseStack matrixStack) {
-        if (!isCrossPortalRenderingEnabled()) {
+        if (client.level == null || collidedEntities.isEmpty()) {
             return;
         }
-        if (!PortalRendering.isRendering()) {
-            if (collidedEntities.containsKey(entity)) {
-                PortalCollisionHandler collisionHandler = ((IEEntity) entity).ip_getPortalCollisionHandler();
-                
-                if (collisionHandler != null) {
-                    for (PortalCollisionEntry e : collisionHandler.portalCollisions) {
-                        Portal collidingPortal = e.portal;
-                        
-                        //draw already built triangles
-                        client.renderBuffers().bufferSource().endBatch();
-                        
-                        FrontClipping.setupOuterClipping(matrixStack, collidingPortal);
-                    }
-                }
-            }
-        }
-    }
-    
-    public static void afterRenderingEntity(Entity entity) {
-        if (!isCrossPortalRenderingEnabled()) {
-            return;
-        }
-        if (!PortalRendering.isRendering()) {
-            if (collidedEntities.containsKey(entity)) {
-                //draw it with culling in a separate draw call
-                client.renderBuffers().bufferSource().endBatch();
-                FrontClipping.disableClipping();
-            }
-        }
-    }
-    
-    //if an entity is in overworld but halfway through a nether portal
-    //then it has a projection in nether
-    private static void renderEntityProjections(PoseStack matrixStack) {
-        if (!isCrossPortalRenderingEnabled()) {
-            return;
-        }
-        
-        ResourceKey<Level> clientDim = client.level.dimension();
-        
+
+        ResourceKey<Level> currentDim = client.level.dimension();
+
         for (Entity entity : collidedEntities.keySet()) {
             PortalCollisionHandler collisionHandler = ((IEEntity) entity).ip_getPortalCollisionHandler();
-            
-            if (collisionHandler != null) {
-                for (PortalCollisionEntry e : collisionHandler.portalCollisions) {
-                    Portal collidingPortal = e.portal;
-                    if (!(collidingPortal instanceof Mirror)) {
-                        ResourceKey<Level> projectionDimension = collidingPortal.getDestDim();
-                        if (clientDim == projectionDimension) {
-                            renderProjectedEntity(entity, collidingPortal, matrixStack);
-                        }
-                    }
+            if (collisionHandler == null) {
+                continue;
+            }
+
+            for (PortalCollisionEntry e : collisionHandler.portalCollisions) {
+                Portal collidingPortal = e.portal;
+                if (collidingPortal instanceof Mirror) {
+                    continue;
                 }
+                if (collidingPortal.getDestDim() != currentDim) {
+                    continue;
+                }
+                if (!shouldRenderProjection(entity, collidingPortal, camera.position())) {
+                    continue;
+                }
+
+                float partialTicks = deltaTracker.getGameTimeDeltaPartialTick(
+                    !entity.level().tickRateManager().isEntityFrozen(entity)
+                );
+                EntityRenderState state = client.levelRenderer.entityRenderDispatcher()
+                    .extractEntity(entity, partialTicks);
+
+                // move the render state to the other side of the portal.
+                // the lighting stays the one of the original position
+                Vec3 newPos = collidingPortal.transformPoint(new Vec3(state.x, state.y, state.z));
+                state.x = newPos.x;
+                state.y = newPos.y;
+                state.z = newPos.z;
+                state.distanceToCameraSq = newPos.distanceToSqr(camera.position());
+
+                if (collidingPortal.getScaling() != 1.0 || collidingPortal.getRotation() != null) {
+                    projectionStates.put(state, collidingPortal);
+                }
+
+                output.entityRenderStates.add(state);
             }
         }
     }
-    
-    public static boolean hasIntersection(
-        Vec3 outerPlanePos, Vec3 outerPlaneNormal,
-        Vec3 entityPos, Vec3 collidingPortalNormal
-    ) {
-        return entityPos.subtract(outerPlanePos).dot(outerPlaneNormal) > 0.01 &&
-            outerPlanePos.subtract(entityPos).dot(collidingPortalNormal) > 0.01;
+
+    /**
+     * Called by the entity render dispatcher after the pose stack is translated to the entity origin.
+     * Applies the portal rotation and scaling to the projection of an entity.
+     */
+    public static void applyProjectionTransformation(EntityRenderState state, PoseStack poseStack) {
+        if (projectionStates.isEmpty()) {
+            return;
+        }
+        Portal portal = projectionStates.get(state);
+        if (portal == null) {
+            return;
+        }
+
+        float scaling = (float) portal.getScaling();
+        poseStack.scale(scaling, scaling, scaling);
+
+        if (portal.getRotation() != null) {
+            poseStack.rotate(portal.getRotation().toMcQuaternion());
+        }
     }
-    
-    private static void renderProjectedEntity(
-        Entity entity,
-        Portal collidingPortal,
-        PoseStack matrixStack
+
+    private static boolean shouldRenderProjection(
+        Entity entity, Portal collidingPortal, Vec3 cameraPos
     ) {
         if (PortalRendering.isRendering()) {
             Portal renderingPortal = PortalRendering.getRenderingPortal();
-            //correctly rendering it needs two culling planes
-            //use some rough check to work around
-            
-            if (renderingPortal instanceof Portal) {
-                if (!Portal.isFlippedPortal(((Portal) renderingPortal), collidingPortal)
-                    && !Portal.isReversePortal(((Portal) renderingPortal), collidingPortal)
-                ) {
-                    Vec3 cameraPos = client.gameRenderer.getMainCamera().getPosition();
-                    
-                    Plane innerClipping = collidingPortal.getInnerClipping();
-                    
-                    boolean isHidden = innerClipping != null &&
-                        !innerClipping.isPointOnPositiveSide(cameraPos);
-                    if (renderingPortal == collidingPortal || !isHidden) {
-                        renderEntity(entity, collidingPortal, matrixStack);
-                    }
-                }
+
+            // correctly rendering it needs two clipping planes
+            // use some rough check to work around
+            if (Portal.isFlippedPortal(renderingPortal, collidingPortal)
+                || Portal.isReversePortal(renderingPortal, collidingPortal)
+            ) {
+                return false;
+            }
+
+            Plane innerClipping = collidingPortal.getInnerClipping();
+            boolean isHidden = innerClipping != null &&
+                !innerClipping.isPointOnPositiveSide(cameraPos);
+            if (renderingPortal != collidingPortal && isHidden) {
+                return false;
+            }
+
+            Vec3 newEyePos = collidingPortal.transformPoint(McHelper.getEyePos(entity));
+            Vec3 transformedEntityPos = newEyePos.subtract(McHelper.getEyeOffset(entity));
+            AABB transformedBoundingBox = McHelper.getBoundingBoxWithMovedPosition(entity, transformedEntityPos);
+
+            if (!PortalManipulation.isOtherSideBoxInside(transformedBoundingBox, renderingPortal)) {
+                return false;
             }
         }
         else {
-            FrontClipping.disableClipping();
-            // don't draw the existing triangles with culling enabled
-            client.renderBuffers().bufferSource().endBatch();
-            
-            FrontClipping.setupInnerClipping(
-                collidingPortal.getInnerClipping(), matrixStack.last().pose(), 0
-            );
-            renderEntity(entity, collidingPortal, matrixStack);
-            FrontClipping.disableClipping();
+            // TODO(26.3): the projection should be clipped by the inner clipping plane of the colliding portal
+            //  (the part that has not yet gone through the portal should be invisible).
+            //  Only one clip plane per view exists now (PortalClipping, the view's portal plane),
+            //  so when the projection is rendered in the main view it's not clipped.
+            //  The same applies to the original entity (outer clipping) seen from behind the portal.
+            //  Possible solution: a per-draw clip plane for entity render types (e.g. a dynamic transforms UBO field).
         }
-    }
-    
-    private static void renderEntity(
-        Entity entity,
-        Portal transformingPortal,
-        PoseStack matrixStack
-    ) {
-        Vec3 cameraPos = client.gameRenderer.getMainCamera().getPosition();
-        
-        ClientLevel newWorld = ClientWorldLoader.getWorld(transformingPortal.getDestDim());
-        
-        Vec3 entityPos = entity.position();
-        Vec3 entityEyePos = McHelper.getEyePos(entity);
-        Vec3 entityLastTickPos = McHelper.lastTickPosOf(entity);
-        Vec3 entityLastTickEyePos = McHelper.getLastTickEyePos(entity);
-        Level oldWorld = entity.level();
-        
-        Vec3 newEyePos = transformingPortal.transformPoint(entityEyePos);
-        
-        if (PortalRendering.isRendering()) {
-            Portal renderingPortal = PortalRendering.getRenderingPortal();
-            
-            Vec3 transformedEntityPos = newEyePos.subtract(McHelper.getEyeOffset(entity));
-            AABB transformedBoundingBox = McHelper.getBoundingBoxWithMovedPosition(entity, transformedEntityPos);
-            
-            boolean intersects = PortalManipulation.isOtherSideBoxInside(transformedBoundingBox, renderingPortal);
-            
-            if (!intersects) {
-                return;
-            }
-        }
-        
+
         if (entity instanceof LocalPlayer) {
             if (!IPGlobal.renderYourselfInPortal) {
-                return;
+                return false;
             }
-            
-            if (!transformingPortal.getDoRenderPlayer()) {
-                return;
+
+            if (!collidingPortal.getDoRenderPlayer()) {
+                return false;
             }
-            
+
             if (client.options.getCameraType().isFirstPerson()) {
-                //avoid rendering player too near and block view
+                // avoid rendering player too near and block view
+                Vec3 newEyePos = collidingPortal.transformPoint(McHelper.getEyePos(entity));
                 double dis = newEyePos.distanceTo(cameraPos);
-                double valve = 0.5 + entityLastTickPos.distanceTo(entityPos);
-                if (transformingPortal.getScaling() > 1) {
-                    valve *= transformingPortal.getScaling();
+                double valve = 0.5 + McHelper.lastTickPosOf(entity).distanceTo(entity.position());
+                if (collidingPortal.getScaling() > 1) {
+                    valve *= collidingPortal.getScaling();
                 }
                 if (dis < valve) {
-                    return;
+                    return false;
                 }
-                
+
                 AABB transformedBoundingBox =
-                    Helper.transformBox(RenderStates.originalPlayerBoundingBox, transformingPortal::transformPoint);
-                if (transformedBoundingBox.contains(CHelper.getCurrentCameraPos())) {
-                    return;
+                    Helper.transformBox(RenderStates.originalPlayerBoundingBox, collidingPortal::transformPoint);
+                if (transformedBoundingBox.contains(cameraPos)) {
+                    return false;
                 }
             }
         }
-        
-        isRenderingEntityProjection = true;
-        matrixStack.pushPose();
-        try {
-            // we don't switch the entity position now
-            // to make the entity to render in the new position,
-            // we change the camera pos passed in
-            
-            // renderedPos = entityPos - cameraPos
-            // cameraPos = entityPos - renderedPos
-            
-            // expectedRenderedPos = newEntityPos - cameraPos
-            // newCameraPos = entityPos - expectedRenderedPos
-            //              = entityPos - newEntityPos + cameraPos
-            
-            Vec3 entityInstantPos = entityLastTickPos.lerp(entityPos, RenderStates.getPartialTick());
-            Vec3 newEntityInstantPos = transformingPortal.transformPoint(entityInstantPos);
-            Vec3 newCameraPos = entityInstantPos.subtract(newEntityInstantPos).add(cameraPos);
-            
-            setupEntityProjectionRenderingTransformation(
-                transformingPortal, matrixStack,
-                entityPos, entityLastTickPos,
-                newCameraPos
-            );
-            
-            MultiBufferSource.BufferSource consumers = client.renderBuffers().bufferSource();
-            ((IEWorldRenderer) client.levelRenderer).ip_myRenderEntity(
-                entity,
-                newCameraPos.x, newCameraPos.y, newCameraPos.z,
-                RenderStates.getPartialTick(), matrixStack,
-                consumers
-            );
-            //immediately invoke draw call
-            consumers.endBatch();
-        }
-        finally {
-            matrixStack.popPose();
-            isRenderingEntityProjection = false;
-        }
+
+        return true;
     }
-    
-    private static void setupEntityProjectionRenderingTransformation(
-        Portal portal, PoseStack matrixStack,
-        Vec3 entityPos, Vec3 entityLastTickPos, Vec3 cameraPos
-    ) {
-        if (portal.getScaling() == 1.0 && portal.getRotation() == null) {
-            return;
-        }
-        
-        Vec3 anchor = entityLastTickPos.lerp(entityPos, RenderStates.getPartialTick())
-            .subtract(cameraPos);
-        
-        matrixStack.translate(anchor.x, anchor.y, anchor.z);
-        
-        float scaling = (float) portal.getScaling();
-        matrixStack.scale(scaling, scaling, scaling);
-        
-        if (portal.getRotation() != null) {
-            matrixStack.mulPose(portal.getRotation().toMcQuaternion());
-        }
-        
-        matrixStack.translate(-anchor.x, -anchor.y, -anchor.z);
-    }
-    
+
+    /**
+     * Used by {@link qouteall.imm_ptl.core.mixin.client.render.MixinCamera} to make the camera "detached"
+     * so that the player is extracted when rendering a portal view.
+     */
     public static boolean shouldRenderPlayerDefault() {
         if (!IPGlobal.renderYourselfInPortal) {
             return false;
@@ -344,8 +269,10 @@ public class CrossPortalEntityRenderer {
             return false;
         }
         LocalPlayer player = client.player;
-        assert player != null;
-        
+        if (player == null) {
+            return false;
+        }
+
         if (PortalRendering.isRendering()) {
             Portal renderingPortal = PortalRendering.getRenderingPortal();
             if (renderingPortal instanceof Mirror) {
@@ -358,14 +285,15 @@ public class CrossPortalEntityRenderer {
                 }
             }
         }
-        
-        if (client.level == player.level()) {
-            return true;
-        }
-        
-        return false;
+
+        return client.level == player.level();
     }
-    
+
+    /**
+     * Called from the entity render dispatcher's shouldRender (during extraction).
+     * In a portal view, the entities behind the portal destination are not extracted.
+     * (Parts of entities that cross the portal plane are clipped by {@link PortalClipping}.)
+     */
     public static boolean shouldRenderEntityNow(Entity entity) {
         Validate.notNull(entity);
         if (IrisInterface.invoker.isRenderingShadowMap()) {
@@ -374,49 +302,31 @@ public class CrossPortalEntityRenderer {
         if (PortalRendering.isRendering()) {
             Portal renderingPortal = PortalRendering.getRenderingPortal();
             Portal collidingPortal = ((IEEntity) entity).ip_getCollidingPortal();
-            
+
             if (entity instanceof Player && !renderingPortal.getDoRenderPlayer()) {
                 return false;
             }
-            
+
             // client colliding portal update is not immediate
             if (collidingPortal != null && !(entity instanceof LocalPlayer)) {
-                if (renderingPortal instanceof Portal) {
-                    if (!Portal.isReversePortal(collidingPortal, ((Portal) renderingPortal))) {
-                        Vec3 cameraPos = PortalRenderer.client.gameRenderer.getMainCamera().getPosition();
-                        
-                        boolean isHidden = cameraPos.subtract(collidingPortal.getOriginPos())
-                            .dot(collidingPortal.getNormal()) < 0;
-                        if (isHidden) {
-                            return false;
-                        }
+                if (!Portal.isReversePortal(collidingPortal, renderingPortal)) {
+                    Vec3 cameraPos = CHelper.getCurrentCameraPos();
+
+                    boolean isHidden = cameraPos.subtract(collidingPortal.getOriginPos())
+                        .dot(collidingPortal.getNormal()) < 0;
+                    if (isHidden) {
+                        return false;
                     }
                 }
             }
-            
+
             return renderingPortal.isOnDestinationSide(
                 getRenderingCameraPos(entity), -0.01
             );
         }
         return true;
     }
-    
-    public static boolean shouldRenderPlayerNormally(Entity entity) {
-        if (!client.options.getCameraType().isFirstPerson()) {
-            return true;
-        }
-        
-        if (RenderStates.originalPlayerBoundingBox.contains(CHelper.getCurrentCameraPos())) {
-            return false;
-        }
-        
-        double distanceToCamera =
-            getRenderingCameraPos(entity)
-                .distanceTo(client.gameRenderer.getMainCamera().getPosition());
-        //avoid rendering player too near and block view except mirror
-        return distanceToCamera > 1 || PortalRendering.isRenderingOddNumberOfMirrors();
-    }
-    
+
     public static Vec3 getRenderingCameraPos(Entity entity) {
         if (entity instanceof LocalPlayer) {
             return RenderStates.originalPlayerPos.add(

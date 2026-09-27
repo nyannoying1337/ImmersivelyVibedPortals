@@ -1,13 +1,11 @@
 package qouteall.imm_ptl.core.render.context_management;
 
-import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.phys.Vec3;
 import org.apache.commons.lang3.Validate;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.ducks.IECamera;
@@ -117,25 +115,25 @@ public class WorldRenderInfo {
         }
     }
     
-    public static void applyAdditionalTransformations(PoseStack matrixStack) {
+    /**
+     * Applies the camera transformations of the render info stack to a view rotation matrix
+     * (e.g. the main camera's {@code Camera.getViewRotationMatrix}).
+     * Used when setting up the camera of a view whose render info is on the stack.
+     *
+     * @return the modified matrix
+     */
+    public static Matrix4f applyAdditionalTransformations(Matrix4f viewRotation) {
         for (WorldRenderInfo worldRenderInfo : renderInfoStack) {
             if (worldRenderInfo.overwriteCameraTransformation) {
-                matrixStack.last().pose().identity();
-                matrixStack.last().normal().identity();
+                viewRotation.identity();
             }
-            
+
             Matrix4f matrix = worldRenderInfo.cameraTransformation;
             if (matrix != null) {
-                matrixStack.last().pose().mul(matrix);
-                
-                Matrix3f normalMatrixMult = new Matrix3f(matrix);
-                // make its determinant 1, so it won't scale the normal vector
-                normalMatrixMult.scale(
-                    (float) Math.pow(1.0 / Math.abs(normalMatrixMult.determinant()), 1.0 / 3)
-                );
-                matrixStack.last().normal().mul(normalMatrixMult);
+                viewRotation.mul(matrix);
             }
         }
+        return viewRotation;
     }
     
     /**

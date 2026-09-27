@@ -9,8 +9,12 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import org.jetbrains.annotations.Nullable;
+import qouteall.imm_ptl.core.IPGlobal;
+import qouteall.imm_ptl.core.mc_utils.WireRenderingHelper;
 import qouteall.imm_ptl.core.portal.Portal;
+import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 
 @Environment(EnvType.CLIENT)
 public class PortalEntityRenderer extends EntityRenderer<Portal, PortalEntityRenderer.PortalRenderState> {
@@ -50,7 +54,20 @@ public class PortalEntityRenderer extends EntityRenderer<Portal, PortalEntityRen
         if (portal != null) {
             PortalSurfaceRendering.submitPortalSurface(portal, poseStack, submitNodeCollector);
 
-            // TODO(26.3): overlay rendering (OverlayRendering) and the debug shape mesh
+            if (OverlayRendering.shouldRenderOverlay(portal)) {
+                OverlayRendering.submitOverlay(portal, poseStack, submitNodeCollector);
+            }
+
+            if (IPGlobal.debugRenderPortalShapeMesh && !PortalRendering.isRendering()) {
+                submitNodeCollector.submitCustomGeometry(
+                    poseStack, RenderTypes.lines(),
+                    (pose, buffer) -> {
+                        PoseStack lineStack = new PoseStack();
+                        lineStack.last().set(pose);
+                        WireRenderingHelper.renderPortalShapeMeshDebug(lineStack, buffer, portal);
+                    }
+                );
+            }
         }
 
         super.submit(state, poseStack, submitNodeCollector, camera);
