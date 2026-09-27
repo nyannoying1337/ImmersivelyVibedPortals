@@ -116,7 +116,7 @@ public class McRemoteProcedureCall {
     public static Packet<ClientCommonPacketListener> createPacketToSendToClient(
         String methodPath, Object... arguments
     ) {
-        return ImplRemoteProcedureCall.createS2CPacket(methodPath, arguments);
+        return ImplRemoteProcedureCall.createClientboundPacket(methodPath, arguments);
     }
     
     /**
@@ -154,6 +154,6 @@ public class McRemoteProcedureCall {
     public static Packet<ServerCommonPacketListener> createPacketToSendToServer(
         String methodPath, Object... arguments
     ) {
-        return ImplRemoteProcedureCall.createC2SPacket(methodPath, arguments);
+        return ImplRemoteProcedureCall.createServerboundPacket(methodPath, arguments);
     }
 }

@@ -73,7 +73,8 @@ public class IPModEntryClient implements ClientModInitializer {
         if (isSodiumPresent) {
             Helper.log("Sodium is present");
             
-            SodiumInterface.invoker = new SodiumInterface.OnSodiumPresent();
+            // TODO(26.3): re-enable once compat is ported
+            // SodiumInterface.invoker = new OnSodiumPresent();
             
             // Sodium compat is pretty ok now. No warning needed.
 //            IPGlobal.clientTaskList.addTask(MyTaskList.oneShotTask(() -> {
@@ -91,7 +92,8 @@ public class IPModEntryClient implements ClientModInitializer {
         
         if (FabricLoader.getInstance().isModLoaded("iris")) {
             Helper.log("Iris is present");
-            IrisInterface.invoker = new IrisInterface.OnIrisPresent();
+            // TODO(26.3): re-enable once compat is ported
+            // IrisInterface.invoker = new OnIrisPresent();
             ExperimentalIrisPortalRenderer.init();
             
             IPGlobal.CLIENT_TASK_LIST.addTask(MyTaskList.oneShotTask(() -> {

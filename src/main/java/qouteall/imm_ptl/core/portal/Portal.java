@@ -910,7 +910,7 @@ public class Portal extends Entity implements
         
         // the listener generic parameter is contravariant. this is fine
         return (Packet<ClientGamePacketListener>) (Packet)
-            ServerPlayNetworking.createS2CPacket(new ImmPtlNetworking.PortalSyncPacket(
+            ServerPlayNetworking.createClientboundPacket(new ImmPtlNetworking.PortalSyncPacket(
                 getId(), getUUID(), getType(),
                 PortalAPI.serverDimKeyToInt(getServer(), getOriginDim()),
                 getX(), getY(), getZ(),
@@ -1001,7 +1001,7 @@ public class Portal extends Entity implements
             if (level() instanceof ServerLevel serverLevel) {
                 ServerLevel destWorld = serverLevel.getServer().getLevel(dimensionTo);
                 if (destWorld == null) {
-                    LOGGER.error("Portal Dest Dimension Missing {}", dimensionTo.location());
+                    LOGGER.error("Portal Dest Dimension Missing {}", dimensionTo.identifier());
                     return false;
                 }
                 boolean inWorldBorder = destWorld.getWorldBorder().isWithinBounds(BlockPos.containing(getDestPos()));
@@ -1024,7 +1024,7 @@ public class Portal extends Entity implements
     private boolean isPortalValidClient() {
         boolean contains = ClientWorldLoader.getServerDimensions().contains(dimensionTo);
         if (!contains) {
-            LOGGER.error("Client Portal Dest Dimension Missing {}", dimensionTo.location());
+            LOGGER.error("Client Portal Dest Dimension Missing {}", dimensionTo.identifier());
         }
         return contains;
     }
@@ -1045,8 +1045,8 @@ public class Portal extends Entity implements
             getClass().getSimpleName(),
             getId(),
             getApproximateFacingDirection(),
-            level().dimension().location(), getX(), getY(), getZ(),
-            dimensionTo.location(), getDestPos().x, getDestPos().y, getDestPos().z,
+            level().dimension().identifier(), getX(), getY(), getZ(),
+            dimensionTo.identifier(), getDestPos().x, getDestPos().y, getDestPos().z,
             specificPlayerId != null ? (",specificAccessor:" + specificPlayerId.toString()) : "",
             hasScaling() ? (",scale:" + scaling) : "",
             portalTag != null ? "," + portalTag : ""
@@ -1769,7 +1769,7 @@ public class Portal extends Entity implements
     public void updatePortalFromNbt(CompoundTag newNbt) {
         CompoundTag data = writePortalDataToNbt();
         
-        newNbt.getAllKeys().forEach(
+        newNbt.keySet().forEach(
             key -> data.put(key, newNbt.get(key))
         );
         

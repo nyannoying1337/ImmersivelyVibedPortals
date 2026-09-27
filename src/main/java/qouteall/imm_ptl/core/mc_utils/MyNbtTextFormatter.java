@@ -213,8 +213,8 @@ public class MyNbtTextFormatter
             return;
         }
         MutableComponent mutableText = Component.literal(CURLY_OPEN_BRACKET);
-        Collection<String> collection = compound.getAllKeys();
-        list = Lists.newArrayList(compound.getAllKeys());
+        Collection<String> collection = compound.keySet();
+        list = Lists.newArrayList(compound.keySet());
         Collections.sort(list);
         collection = list;
         if (!this.prefix.isEmpty()) {

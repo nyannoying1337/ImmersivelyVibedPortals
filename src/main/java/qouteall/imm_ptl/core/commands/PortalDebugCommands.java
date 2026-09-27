@@ -382,7 +382,7 @@ public class PortalDebugCommands {
                 CHelper.printChat(
                     String.format(
                         "On Server %s %s removal:%s added:%s age:%s",
-                        player.level().dimension().location(),
+                        player.level().dimension().identifier(),
                         player.blockPosition(),
                         player.getRemovalReason(),
                         player.level().getEntity(player.getId()) != null,
@@ -408,7 +408,7 @@ public class PortalDebugCommands {
                 result.append("Server Portals\n");
                 
                 for (ServerLevel world : MiscHelper.getServer().getAllLevels()) {
-                    result.append(world.dimension().location().toString() + "\n");
+                    result.append(world.dimension().identifier().toString() + "\n");
                     for (Entity entity : world.getAllEntities()) {
                         for (Entity e : world.getAllEntities()) {
                             if (e instanceof Portal) {
@@ -578,10 +578,10 @@ public class PortalDebugCommands {
             .requires(serverCommandSource -> serverCommandSource.hasPermission(3))
             .executes(context -> {
                 RegistryAccess.Frozen registryAccess = MiscHelper.getServer().registryAccess();
-                Registry<Biome> biomes = registryAccess.registryOrThrow(Registries.BIOME);
+                Registry<Biome> biomes = registryAccess.lookupOrThrow(Registries.BIOME);
                 Map<String, Integer> map = new HashMap<>();
                 for (Map.Entry<ResourceKey<Biome>, Biome> entry : biomes.entrySet()) {
-                    String strId = entry.getKey().location().toString();
+                    String strId = entry.getKey().identifier().toString();
                     int intId = biomes.getId(entry.getValue());
                     map.put(strId, intId);
                 }
@@ -600,10 +600,10 @@ public class PortalDebugCommands {
 //            .literal("print_biome_list")
 //            .requires(serverCommandSource -> serverCommandSource.hasPermission(3))
 //            .executes(context -> {
-//                Registry<Biome> biomes = MiscHelper.getServer().registryAccess().registryOrThrow(Registries.BIOME);
+//                Registry<Biome> biomes = MiscHelper.getServer().registryAccess().lookupOrThrow(Registries.BIOME);
 //
 //                StringBuilder builder1 = new StringBuilder();
-//                for (ResourceLocation resourceLocation : biomes.keySet()) {
+//                for (Identifier resourceLocation : biomes.keySet()) {
 //                    builder1.append("\"");
 //                    builder1.append(resourceLocation);
 //                    builder1.append("\",\n");
@@ -621,7 +621,7 @@ public class PortalDebugCommands {
 //            .executes(context -> {
 //                MiscHelper.getServer().getAllLevels().forEach(world -> {
 //                    ChunkGenerator generator = world.getChunkSource().getGenerator();
-//                    Helper.log(world.dimension().location());
+//                    Helper.log(world.dimension().identifier());
 //                    Helper.log(McHelper.serializeToJson(generator, ChunkGenerator.CODEC));
 //                    Helper.log(McHelper.serializeToJson(
 //                        world.dimensionType(),
@@ -753,7 +753,7 @@ public class PortalDebugCommands {
         
         subStr.append(String.format(
             "%s:\nImmPtl Tracked Chunks: %s\nImmPtl Loading Ticket:%s\nChunks: %s\nEntities:%s Entity Sections:%s\n",
-            world.dimension().location(),
+            world.dimension().identifier(),
             ImmPtlChunkTracking.getLoadedChunkNum(world.dimension()),
             dimTicketManager.getLoadedChunkNum(),
             world.getChunkSource().chunkMap.size(),

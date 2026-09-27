@@ -119,7 +119,7 @@ public class DimStackManagement {
             newMap.put(world.dimension(), replacement);
             LOGGER.info(
                 "Bedrock Replacement {} {}",
-                world.dimension().location(),
+                world.dimension().identifier(),
                 replacement != null ?
                     BuiltInRegistries.BLOCK.getKey(replacement.getBlock()) : "null"
             );
@@ -143,7 +143,7 @@ public class DimStackManagement {
             BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
             for (int x = 0; x < 16; x++) {
                 for (int z = 0; z < 16; z++) {
-                    for (int y = chunk.getMinBuildHeight(); y < chunk.getMaxBuildHeight(); y++) {
+                    for (int y = chunk.getMinY(); y < (chunk.getMaxY() + 1); y++) {
                         mutable.set(x, y, z);
                         BlockState blockState = chunk.getBlockState(mutable);
                         if (blockState.getBlock() == Blocks.BEDROCK) {
@@ -179,7 +179,7 @@ public class DimStackManagement {
         ServerPlayer player
     ) {
         List<String> dimIdList = collectDimStackCandidateWhenServerRunning(player.server)
-            .stream().map(k -> k.location().toString()).toList();
+            .stream().map(k -> k.identifier().toString()).toList();
         
         McRemoteProcedureCall.tellClientToInvoke(
             player,

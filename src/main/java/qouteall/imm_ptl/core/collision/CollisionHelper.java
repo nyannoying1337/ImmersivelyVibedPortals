@@ -1,5 +1,6 @@
 package qouteall.imm_ptl.core.collision;
 
+import net.minecraft.util.profiling.Profiler;
 import com.google.common.collect.ImmutableList;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -401,7 +402,7 @@ public class CollisionHelper {
     }
     
     public static void updateCollidingPortalForWorld(Level world, float partialTick) {
-        world.getProfiler().push("update_colliding_portal");
+        Profiler.get().push("update_colliding_portal");
         
         List<Portal> globalPortals = GlobalPortalStorage.getGlobalPortals(world);
         Iterable<Entity> worldEntityList = McHelper.getWorldEntityList(world);
@@ -425,7 +426,7 @@ public class CollisionHelper {
             }
         }
         
-        world.getProfiler().pop();
+        Profiler.get().pop();
     }
     
     public static void init() {

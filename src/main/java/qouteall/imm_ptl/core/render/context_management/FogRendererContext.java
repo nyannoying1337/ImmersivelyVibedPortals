@@ -1,5 +1,6 @@
 package qouteall.imm_ptl.core.render.context_management;
 
+import net.minecraft.util.profiling.Profiler;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -67,7 +68,7 @@ public class FogRendererContext {
     ) {
         Minecraft client = Minecraft.getInstance();
         
-        client.getProfiler().push("get_fog_color");
+        Profiler.get().push("get_fog_color");
         
         ClientLevel oldWorld = client.level;
         
@@ -104,7 +105,7 @@ public class FogRendererContext {
             swappingManager.popSwapping();
             client.level = oldWorld;
             
-            client.getProfiler().pop();
+            Profiler.get().pop();
         }
     }
     

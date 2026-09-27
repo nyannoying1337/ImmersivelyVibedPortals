@@ -1,5 +1,6 @@
 package qouteall.imm_ptl.core.mixin.client.render;
 
+import net.minecraft.util.profiling.Profiler;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -71,16 +72,16 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
     private void onFarBeforeRendering(
         DeltaTracker deltaTracker, boolean renderWorldIn, CallbackInfo ci
     ) {
-        minecraft.getProfiler().push("ip_pre_total_render");
+        Profiler.get().push("ip_pre_total_render");
         IPGlobal.PRE_TOTAL_RENDER_TASK_LIST.processTasks();
-        minecraft.getProfiler().pop();
+        Profiler.get().pop();
         if (minecraft.level == null) {
             return;
         }
         if (!renderWorldIn) { // when respawning, it will runTick and execute rendering
             return;
         }
-        minecraft.getProfiler().push("ip_pre_render");
+        Profiler.get().push("ip_pre_render");
         // Note do not use delta tick. use partial tick.
         float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
         RenderStates.updatePreRenderInfo(partialTick);
@@ -93,7 +94,7 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
         if (IPCGlobal.earlyRemoteUpload) {
             MyRenderHelper.earlyRemoteUpload();
         }
-        minecraft.getProfiler().pop();
+        Profiler.get().pop();
         
         RenderStates.frameIndex++;
     }
@@ -133,9 +134,9 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
         GuiPortalRendering._onGameRenderEnd();
         
         if (IPCGlobal.lateClientLightUpdate) {
-            minecraft.getProfiler().push("ip_late_update_light");
+            Profiler.get().push("ip_late_update_light");
             MyRenderHelper.lateUpdateLight();
-            minecraft.getProfiler().pop();
+            Profiler.get().pop();
         }
     }
     

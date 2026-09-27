@@ -1,5 +1,6 @@
 package qouteall.imm_ptl.core.mixin.client.render;
 
+import net.minecraft.util.profiling.Profiler;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.Lighting;
@@ -263,14 +264,14 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
         
         if (ip_allowOverrideTerrainSetup()) {
             if (WorldRenderInfo.isRendering()) {
-                level.getProfiler().push("ip_terrain_setup");
+                Profiler.get().push("ip_terrain_setup");
                 VisibleSectionDiscovery.discoverVisibleSections(
                     level, ((ImmPtlViewArea) viewArea),
                     camera,
                     new Frustum(frustum).offsetToFullyIncludeCameraCube(8),
                     visibleSections
                 );
-                level.getProfiler().pop();
+                Profiler.get().pop();
                 
                 ci.cancel();
             }
@@ -296,25 +297,25 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
                 if (MyGameRenderer.vanillaTerrainSetupOverride > 0) {
                     MyGameRenderer.vanillaTerrainSetupOverride--;
                     
-                    level.getProfiler().push("ip_terrain_setup");
+                    Profiler.get().push("ip_terrain_setup");
                     VisibleSectionDiscovery.discoverVisibleSections(
                         level, ((ImmPtlViewArea) viewArea),
                         camera,
                         new Frustum(frustum).offsetToFullyIncludeCameraCube(8),
                         visibleSections
                     );
-                    level.getProfiler().pop();
+                    Profiler.get().pop();
                 }
                 else if (IPGlobal.alwaysOverrideTerrainSetup) {
                     // debug
-                    level.getProfiler().push("ip_terrain_setup_debug");
+                    Profiler.get().push("ip_terrain_setup_debug");
                     VisibleSectionDiscovery.discoverVisibleSections(
                         level, ((ImmPtlViewArea) viewArea),
                         camera,
                         new Frustum(frustum).offsetToFullyIncludeCameraCube(8),
                         visibleSections
                     );
-                    level.getProfiler().pop();
+                    Profiler.get().pop();
                 }
             }
         }

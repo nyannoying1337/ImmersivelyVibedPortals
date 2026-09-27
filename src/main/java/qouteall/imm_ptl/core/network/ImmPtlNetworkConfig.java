@@ -78,7 +78,7 @@ public class ImmPtlNetworkConfig {
         @Override
         public void start(Consumer<Packet<?>> consumer) {
             consumer.accept(
-                ServerConfigurationNetworking.createS2CPacket(new S2CConfigStartPacket(
+                ServerConfigurationNetworking.createClientboundPacket(new S2CConfigStartPacket(
                     immPtlVersion
                 ))
             );

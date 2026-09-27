@@ -1,5 +1,6 @@
 package qouteall.imm_ptl.core.teleportation;
 
+import net.minecraft.util.profiling.Profiler;
 import com.mojang.logging.LogUtils;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
@@ -173,7 +174,7 @@ public class ServerTeleportationManager {
         if (portal == null) {
             LOGGER.error(
                 "Unable to find portal {} in {} to teleport {}",
-                portalId, dimensionBefore.location(), player
+                portalId, dimensionBefore.identifier(), player
             );
             return;
         }
@@ -214,7 +215,7 @@ public class ServerTeleportationManager {
         else {
             LOGGER.error(
                 "Player {} {} {} cannot teleport through portal {}\nReason: {}",
-                player, player.level().dimension().location(), player.position(),
+                player, player.level().dimension().identifier(), player.position(),
                 portal, failReason
             );
             teleportEntityGeneral(player, player.position(), ((ServerLevel) player.level()));
@@ -232,7 +233,7 @@ public class ServerTeleportationManager {
         ServerLevel originalWorld = server.getLevel(dimensionBefore);
         
         if (originalWorld == null) {
-            LOGGER.error("Missing world {} when finding portal", dimensionBefore.location());
+            LOGGER.error("Missing world {} when finding portal", dimensionBefore.identifier());
             return null;
         }
         
@@ -332,7 +333,7 @@ public class ServerTeleportationManager {
         Vec3 newEyePos
     ) {
         MinecraftServer server = player.server;
-        server.getProfiler().push("portal_teleport");
+        Profiler.get().push("portal_teleport");
         
         ServerLevel fromWorld = (ServerLevel) player.level();
         ServerLevel toWorld = server.getLevel(dimensionTo);
@@ -354,7 +355,7 @@ public class ServerTeleportationManager {
             player, newEyePos, newEyePos, 1
         );
         
-        server.getProfiler().pop();
+        Profiler.get().pop();
     }
     
     public void forceTeleportPlayer(
@@ -372,7 +373,7 @@ public class ServerTeleportationManager {
         if (IPConfig.getConfig().serverTeleportLogging) {
             LOGGER.info(
                 "Force teleporting {} to {} {}",
-                player, dimensionTo.location(), newPos
+                player, dimensionTo.identifier(), newPos
             );
         }
         
@@ -382,7 +383,7 @@ public class ServerTeleportationManager {
         if (toWorld == null) {
             LOGGER.error(
                 "Cannot teleport player {} to non-existing dimension {}",
-                player, dimensionTo.location()
+                player, dimensionTo.identifier()
             );
             return;
         }
@@ -467,9 +468,9 @@ public class ServerTeleportationManager {
             LOGGER.info(
                 "{} :: ({} {} {} {})->({} {} {} {})",
                 player.getName().getContents(),
-                fromWorld.dimension().location(),
+                fromWorld.dimension().identifier(),
                 oldPos.x(), oldPos.y(), oldPos.z(),
-                toWorld.dimension().location(),
+                toWorld.dimension().identifier(),
                 (int) player.getX(), (int) player.getY(), (int) player.getZ()
             );
         }
@@ -632,7 +633,7 @@ public class ServerTeleportationManager {
         if (toWorld == null) {
             LOGGER.error(
                 "Invalid dest dimension {} to teleport entity {} to",
-                toDimension.location(), entity
+                toDimension.identifier(), entity
             );
             return entity;
         }
@@ -838,7 +839,7 @@ public class ServerTeleportationManager {
                 );
                 
                 player.sendSystemMessage(Component.literal(
-                    "Teleported to spawn pos because dimension %s had been removed".formatted(world.dimension().location())
+                    "Teleported to spawn pos because dimension %s had been removed".formatted(world.dimension().identifier())
                 ));
             }
         }

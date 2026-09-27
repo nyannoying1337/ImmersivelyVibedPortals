@@ -1,5 +1,6 @@
 package qouteall.imm_ptl.core.portal.custom_portal_gen;
 
+import net.minecraft.util.profiling.Profiler;
 import com.google.common.collect.Lists;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.Lifecycle;
@@ -11,7 +12,7 @@ import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -107,7 +108,7 @@ public class CustomPortalGeneration {
     public final List<String> postInvokeCommands;
     public final List<List<String>> commandsOnGenerated;
     
-    public ResourceLocation identifier = null;
+    public Identifier identifier = null;
     
     public CustomPortalGeneration(
         List<ResourceKey<Level>> fromDimensions, ResourceKey<Level> toDimension,
@@ -190,7 +191,7 @@ public class CustomPortalGeneration {
     ) implements InitializationResult {
         @Override
         public String toString() {
-            return "Destination dimension %s not loaded".formatted(dimId.location());
+            return "Destination dimension %s not loaded".formatted(dimId.identifier());
         }
     }
     
@@ -258,13 +259,13 @@ public class CustomPortalGeneration {
         ServerLevel toWorld = MiscHelper.getServer().getLevel(destDimension);
         
         if (toWorld == null) {
-            Helper.err("Missing dimension " + destDimension.location());
+            Helper.err("Missing dimension " + destDimension.identifier());
             return false;
         }
         
-        world.getProfiler().push("custom_portal_gen_perform");
+        Profiler.get().push("custom_portal_gen_perform");
         boolean result = form.perform(this, world, startPos, toWorld, triggeringEntity);
-        world.getProfiler().pop();
+        Profiler.get().pop();
         return result;
     }
     

@@ -1,5 +1,6 @@
 package qouteall.imm_ptl.core.teleportation;
 
+import net.minecraft.util.profiling.Profiler;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
@@ -43,7 +44,7 @@ public class CrossPortalSound {
             return null;
         }
         
-        soundWorld.getProfiler().push("cross_portal_sound");
+        Profiler.get().push("cross_portal_sound");
         
         double soundRadius = Math.min(64, Math.max(VOLUME_RADIUS_MULT * soundVol, MIN_SOUND_RADIUS));
         Vec3 playerCameraPos = RenderStates.originalPlayerPos.add(
@@ -86,7 +87,7 @@ public class CrossPortalSound {
             }
         ).orElse(null);
         
-        soundWorld.getProfiler().pop();
+        Profiler.get().pop();
         
         return result;
     }
