@@ -2,8 +2,8 @@ package qouteall.q_misc_util.mixin.client;
 
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Gui;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.Hud;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -12,19 +12,19 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.q_misc_util.CustomTextOverlay;
 
-@Mixin(Gui.class)
+@Mixin(Hud.class)
 public class MixinGui_Overlay {
     @Shadow
     @Final
     private Minecraft minecraft;
     
     @Inject(
-        method = "render", at = @At("RETURN")
+        method = "extractRenderState", at = @At("RETURN")
     )
     private void onRender(
-        GuiGraphics guiGraphics, DeltaTracker deltaTracker, CallbackInfo ci
+        GuiGraphicsExtractor guiGraphics, DeltaTracker deltaTracker, CallbackInfo ci
     ) {
-        if (!this.minecraft.options.hideGui) {
+        if (!((Hud) (Object) this).isHidden()) {
             CustomTextOverlay.render(guiGraphics, deltaTracker);
         }
     }

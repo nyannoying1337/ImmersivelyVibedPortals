@@ -5,15 +5,17 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.RegistryOps;
+import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -27,9 +29,11 @@ import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import qouteall.q_misc_util.Helper;
 
 import java.util.ArrayList;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -84,7 +88,7 @@ public class ErrorTerrainGenerator extends DelegatedChunkGenerator {
                 new CacheLoader<ChunkPos, RegionErrorTerrainGenerator>() {
                     public RegionErrorTerrainGenerator load(ChunkPos key) {
                         return new RegionErrorTerrainGenerator(
-                            key.x, key.z,
+                            key.x(), key.z(),
                             System.nanoTime()
                             // use the system time as seed
                             // there is no need to keep the error terrain generation consistent
@@ -98,8 +102,15 @@ public class ErrorTerrainGenerator extends DelegatedChunkGenerator {
         return MAP_CODEC;
     }
     
+    // TODO(26.3): In 1.21.1 this only overrode fillFromNoise, and surface building and carvers were delegated
+    //  to the island NoiseBasedChunkGenerator. In 26.3 these three steps are merged into buildTerrain and
+    //  NoiseBasedChunkGenerator's buildSurface/generateCarvers are private, so the error terrain now has no surface
+    //  rule and no carvers applied.
     @Override
-    public @NotNull CompletableFuture<ChunkAccess> fillFromNoise(Blender blender, RandomState randomState, StructureManager structureManager, ChunkAccess chunkAccess) {
+    public @NotNull CompletableFuture<ChunkAccess> buildTerrain(
+        ChunkAccess chunkAccess, Blender blender, RandomState randomState, StructureManager structureManager,
+        BiomeManager biomeManager, @Nullable WorldGenRegion carverBiomeRegion, Set<Holder<Biome>> possibleBiomes
+    ) {
         LevelChunkSection[] sectionArray = chunkAccess.getSections();
         ArrayList<LevelChunkSection> locked = new ArrayList<>();
         for (LevelChunkSection chunkSection : sectionArray) {
@@ -127,8 +138,8 @@ public class ErrorTerrainGenerator extends DelegatedChunkGenerator {
         Heightmap surfaceHeightMap = protoChunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG);
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         
-        int regionX = Math.floorDiv(pos.x, regionChunkNum);
-        int regionZ = Math.floorDiv(pos.z, regionChunkNum);
+        int regionX = Math.floorDiv(pos.x(), regionChunkNum);
+        int regionZ = Math.floorDiv(pos.z(), regionChunkNum);
         RegionErrorTerrainGenerator generator = Helper.noError(() ->
             cache.get(new ChunkPos(regionX, regionZ))
         );
@@ -139,9 +150,9 @@ public class ErrorTerrainGenerator extends DelegatedChunkGenerator {
             for (int localX = 0; localX < 16; localX++) {
                 for (int localZ = 0; localZ < 16; localZ++) {
                     for (int localY = 0; localY < 16; localY++) {
-                        int worldX = pos.x * 16 + localX;
+                        int worldX = pos.x() * 16 + localX;
                         int worldY = sectionY * 16 + localY;
-                        int worldZ = pos.z * 16 + localZ;
+                        int worldZ = pos.z() * 16 + localZ;
                         
                         BlockState currBlockState = generator.getBlockComposition(
                             worldX, worldY, worldZ

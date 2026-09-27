@@ -102,7 +102,7 @@ public class ImplRemoteProcedureCall {
             .build();
         
         deserializerMap = ImmutableMap.<Type, Function<RegistryFriendlyByteBuf, Object>>builder()
-            .put(Identifier.class, FriendlyByteBuf::readResourceLocation)
+            .put(Identifier.class, FriendlyByteBuf::readIdentifier)
             .put(
                 new TypeToken<ResourceKey<Level>>() {}.getType(),
                 buf -> ResourceKey.create(
@@ -407,7 +407,7 @@ public class ImplRemoteProcedureCall {
     
     @Environment(EnvType.CLIENT)
     private static void clientTellFailure() {
-        Minecraft.getInstance().gui.getChat().addMessage(Component.literal(
+        Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(Component.literal(
             "The client failed to process a packet from server. See the log for details."
         ).withStyle(ChatFormatting.RED));
     }

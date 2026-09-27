@@ -186,8 +186,8 @@ public class ClientWorldLoader {
             Vec3 playerPos = CLIENT.player.position();
             Vec3 center = portal.transformPoint(playerPos);
             
-            Camera camera = CLIENT.gameRenderer.getMainCamera();
-            Vec3 oldCameraPos = camera.getPosition();
+            Camera camera = CLIENT.gameRenderer.mainCamera();
+            Vec3 oldCameraPos = camera.position();
             
             ((IECamera) camera).portal_setPos(center);
             
@@ -434,7 +434,7 @@ public class ClientWorldLoader {
             
             Holder<DimensionType> dimensionType = registryManager
                 .lookupOrThrow(Registries.DIMENSION_TYPE)
-                .getHolderOrThrow(dimensionTypeKey);
+                .getOrThrow(dimensionTypeKey);
             
             // currently use a separated level data object
             // day time is not shared between worlds

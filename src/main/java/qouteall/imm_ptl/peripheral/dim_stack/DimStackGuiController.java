@@ -205,9 +205,9 @@ public class DimStackGuiController {
     }
     
     private void showConflictingAlert() {
-        Minecraft.getInstance().setScreen(new AlertScreen(
+        Minecraft.getInstance().gui.setScreen(new AlertScreen(
             () -> {
-                Minecraft.getInstance().setScreen(view);
+                Minecraft.getInstance().gui.setScreen(view);
             },
             Component.translatable("imm_ptl.conflicting_dim_stack")
                 .withStyle(ChatFormatting.RED),
@@ -247,9 +247,9 @@ public class DimStackGuiController {
         else {
             DimStackManagement.setDimStackPreset(model.getResult());
             
-            Minecraft.getInstance().setScreen(new AlertScreen(
+            Minecraft.getInstance().gui.setScreen(new AlertScreen(
                 () -> {
-                    Minecraft.getInstance().setScreen(view);
+                    Minecraft.getInstance().gui.setScreen(view);
                 },
                 Component.literal(""),
                 Component.translatable("imm_ptl.dim_stack_default_updated")

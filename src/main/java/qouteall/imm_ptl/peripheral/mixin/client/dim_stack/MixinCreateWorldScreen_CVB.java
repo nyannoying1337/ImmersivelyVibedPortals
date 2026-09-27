@@ -75,13 +75,13 @@ public abstract class MixinCreateWorldScreen_CVB extends Screen implements IECre
                 () -> portal_getDimensionList(),
                 info -> {
                     DimStackManagement.dimStackToApply = info;
-                    Minecraft.getInstance().setScreen(this_);
+                    Minecraft.getInstance().gui.setScreen(this_);
                 }
             );
             ip_dimStackController.initializeAsDefault();
         }
         
-        Minecraft.getInstance().setScreen(ip_dimStackController.view);
+        Minecraft.getInstance().gui.setScreen(ip_dimStackController.view);
     }
     
     private List<ResourceKey<Level>> portal_getDimensionList() {

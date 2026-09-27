@@ -4,7 +4,6 @@
   "compatibilityLevel": "JAVA_25",
   "plugin": "qouteall.imm_ptl.peripheral.IPPeripheralMixinPlugin",
   "mixins": [
-    "common.alternate_dimension.IEChunkAccess_AlternateDim",
     "common.alternate_dimension.IEChunkGenerator_AlternateDim",
     "common.alternate_dimension.IENoiseGeneratorSettings",
     "common.alternate_dimension.IENoiseRouterData",

@@ -1,11 +1,7 @@
 package qouteall.imm_ptl.core.ducks;
 
-import net.minecraft.server.level.Ticket;
-import net.minecraft.util.SortedArraySet;
-
 public interface IEDistanceManager {
-    
-    SortedArraySet<Ticket<?>> portal_getTicketSet(long chunkPos);
-    
-    
+    // portal_getTicketSet was removed in the 26.3 port:
+    // Ticket is no longer generic, and the callers now use ImmPtlChunkTickets.getTickets(world, pos)
+
 }

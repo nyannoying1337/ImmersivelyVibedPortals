@@ -43,7 +43,7 @@ public abstract class MixinItemEntity_P {
         Profiler.get().push("imm_ptl_item_tick");
         
         CustomPortalGenManager customPortalGenManager =
-            IPPerServerInfo.of(this_.getServer()).customPortalGenManager;
+            IPPerServerInfo.of(this_.level().getServer()).customPortalGenManager;
         if (customPortalGenManager != null) {
             customPortalGenManager.onItemTick(this_);
         }

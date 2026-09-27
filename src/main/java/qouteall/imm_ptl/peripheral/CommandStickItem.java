@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.Collectors;
+import net.minecraft.server.permissions.Permissions;
 
 public class CommandStickItem extends Item {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -73,14 +74,12 @@ public class CommandStickItem extends Item {
         
         public static Data deserialize(CompoundTag tag) {
             return new Data(
-                tag.getString("command"),
-                tag.getString("nameTranslationKey"),
-                tag.getList(
-                        "descriptionTranslationKeys",
-                        StringTag.valueOf("").getId()
-                    )
+                tag.getStringOr("command", ""),
+                tag.getStringOr("nameTranslationKey", ""),
+                tag.getListOrEmpty("descriptionTranslationKeys")
                     .stream()
-                    .map(tag1 -> ((StringTag) tag1).getAsString())
+                    .filter(tag1 -> tag1 instanceof StringTag)
+                    .map(tag1 -> ((StringTag) tag1).value())
                     .collect(Collectors.toList())
             );
         }
@@ -127,7 +126,7 @@ public class CommandStickItem extends Item {
             
             CommandSourceStack commandSource = player.createCommandSourceStack().withPermission(2);
             
-            MinecraftServer server = player.getServer();
+            MinecraftServer server = player.level().getServer();
             assert server != null;
             Commands commandManager = server.getCommands();
             
@@ -150,7 +149,7 @@ public class CommandStickItem extends Item {
             return true;// any player regardless of gamemode can use
         }
         else {
-            return player.hasPermissions(2) || player.isCreative();
+            return player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER) || player.isCreative();
         }
     }
     

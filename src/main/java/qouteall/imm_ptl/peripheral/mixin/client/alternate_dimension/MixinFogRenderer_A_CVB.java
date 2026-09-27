@@ -3,7 +3,7 @@ package qouteall.imm_ptl.peripheral.mixin.client.alternate_dimension;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.FogRenderer;
+import net.minecraft.client.renderer.fog.FogRenderer;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -14,23 +14,23 @@ import qouteall.imm_ptl.peripheral.alternate_dimension.AlternateDimensions;
 public class MixinFogRenderer_A_CVB {
     //avoid alternate dimension dark when seeing from overworld
     @Redirect(
-        method = "Lnet/minecraft/client/renderer/FogRenderer;setupColor(Lnet/minecraft/client/Camera;FLnet/minecraft/client/multiplayer/ClientLevel;IF)V",
+        method = "Lnet/minecraft/client/renderer/fog/FogRenderer;computeFogColor(Lnet/minecraft/client/Camera;FLnet/minecraft/client/multiplayer/ClientLevel;IFLorg/joml/Vector4f;)V",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/client/Camera;getPosition()Lnet/minecraft/world/phys/Vec3;"
+            target = "Lnet/minecraft/client/Camera;position()Lnet/minecraft/world/phys/Vec3;"
         )
     )
-    private static Vec3 redirectCameraGetPos(Camera camera) {
+    private Vec3 redirectCameraGetPos(Camera camera) {
         ClientLevel world = Minecraft.getInstance().level;
         if (world != null && AlternateDimensions.isAlternateDimension(world)) {
             return new Vec3(
-                camera.getPosition().x,
-                Math.max(32.0, camera.getPosition().y),
-                camera.getPosition().z
+                camera.position().x,
+                Math.max(32.0, camera.position().y),
+                camera.position().z
             );
         }
         else {
-            return camera.getPosition();
+            return camera.position();
         }
     }
 }

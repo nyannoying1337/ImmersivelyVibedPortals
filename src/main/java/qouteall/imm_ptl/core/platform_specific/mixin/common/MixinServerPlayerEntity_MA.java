@@ -44,13 +44,13 @@ public class MixinServerPlayerEntity_MA {
     
     private static void onBeforeDimensionTravel(ServerPlayer player) {
         CustomPortalGenManager customPortalGenManager =
-            IPPerServerInfo.of(player.server).customPortalGenManager;
+            IPPerServerInfo.of(player.level().getServer()).customPortalGenManager;
         
         if (customPortalGenManager != null) {
             customPortalGenManager.onBeforeConventionalDimensionChange(player);
             ImmPtlChunkTracking.removePlayerFromChunkTrackersAndEntityTrackers(player);
             
-            ServerTaskList.of(player.server).addTask(() -> {
+            ServerTaskList.of(player.level().getServer()).addTask(() -> {
                 customPortalGenManager.onAfterConventionalDimensionChange(player);
                 return true;
             });

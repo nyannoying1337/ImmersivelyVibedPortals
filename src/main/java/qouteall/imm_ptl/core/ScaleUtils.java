@@ -16,6 +16,7 @@ import org.apache.commons.lang3.Validate;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.ducks.IECamera;
 import qouteall.imm_ptl.core.portal.Portal;
+import net.minecraft.world.entity.player.Player;
 
 @SuppressWarnings({"resource", "JavadocReference", "DanglingJavadoc"})
 public class ScaleUtils {
@@ -37,7 +38,7 @@ public class ScaleUtils {
             
             doScalingForEntity(player, portal);
             
-            IECamera camera = (IECamera) client.gameRenderer.getMainCamera();
+            IECamera camera = (IECamera) client.gameRenderer.mainCamera();
             camera.ip_setCameraY(
                 ((float) (camera.ip_getCameraY() * portal.getScaling())),
                 ((float) (camera.ip_getLastCameraY() * portal.getScaling()))
@@ -151,16 +152,18 @@ public class ScaleUtils {
         double oldScale = ScaleUtils.getIPortalScaling(entity);
         double newScale = transformScale(portal, oldScale);
         
-        if (!entity.level().isClientSide && isScaleIllegal(newScale)) {
+        if (!entity.level().isClientSide() && isScaleIllegal(newScale)) {
             newScale = 1;
-            entity.sendSystemMessage(
-                Component.literal("Scale out of range")
-            );
+            if (entity instanceof Player player) {
+                player.sendSystemMessage(
+                    Component.literal("Scale out of range")
+                );
+            }
         }
         
         ScaleUtils.setIPortalScaling(entity, newScale);
         
-        if (!entity.level().isClientSide) {
+        if (!entity.level().isClientSide()) {
             McHelper.setEyePos(entity, eyePos, lastTickEyePos);
             McHelper.updateBoundingBox(entity);
         }
