@@ -79,10 +79,8 @@
     "common.registry.IERegistryDataLoader"
   ],
   "client": [
-    "client.MixinAbstractClientPlayer",
     "client.MixinClientConnection",
     "client.MixinClientLevel",
-    "client.MixinDebugScreenOverlay",
     "client.MixinGlDebug",
     "client.MixinLivingEntity_C",
     "client.MixinGui_InitialScreen",
@@ -95,7 +93,6 @@
     "client.interaction.MixinItem_Interaction_Client",
     "client.interaction.MixinMinecraft_B",
     "client.interaction.MixinMultiPlayerGameMode",
-    "client.multiworld_awareness.MixinBiomeAmbientSoundPlayer",
     "client.particle.IEParticle",
     "client.particle.MixinParticleEngine",
     "client.particle.MixinParticleGroup",

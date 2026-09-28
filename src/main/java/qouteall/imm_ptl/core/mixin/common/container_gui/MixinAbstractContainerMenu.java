@@ -14,10 +14,11 @@ import qouteall.imm_ptl.core.block_manipulation.BlockManipulationServer;
 @Mixin(AbstractContainerMenu.class)
 public class MixinAbstractContainerMenu {
     @WrapOperation(
-        method = "method_17696",
+        // the lambda in stillValid(ContainerLevelAccess, Player, Block)
+        method = "lambda$stillValid$0",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/world/entity/player/Player;canInteractWithBlock(Lnet/minecraft/core/BlockPos;D)Z"
+            target = "Lnet/minecraft/world/entity/player/Player;isWithinBlockInteractionRange(Lnet/minecraft/core/BlockPos;D)Z"
         )
     )
     private static boolean wrapDistanceToSqr(

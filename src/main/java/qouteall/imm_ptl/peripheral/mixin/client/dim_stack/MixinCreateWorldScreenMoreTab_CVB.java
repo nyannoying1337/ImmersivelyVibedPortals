@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
+import com.llamalad7.mixinextras.sugar.Local;
 import qouteall.imm_ptl.peripheral.ducks.IECreateWorldScreen;
 
 @Mixin(CreateWorldScreen.MoreTab.class)
@@ -18,21 +18,20 @@ public class MixinCreateWorldScreenMoreTab_CVB {
     // the implicit parent object reference
     @Final
     @Shadow
-    CreateWorldScreen field_42178;
+    CreateWorldScreen this$0;
     
     @Inject(
         method = "<init>",
-        at = @At("RETURN"),
-        locals = LocalCapture.CAPTURE_FAILHARD
+        at = @At("RETURN")
     )
     private void onInitEnd(
         CreateWorldScreen createWorldScreen, CallbackInfo ci,
-        GridLayout.RowHelper rowHelper
+        @Local GridLayout.RowHelper rowHelper
     ) {
         rowHelper.addChild(
             Button.builder(
                 Component.translatable("imm_ptl.altius_screen_button"),
-                button -> ((IECreateWorldScreen) field_42178).ip_openDimStackScreen()
+                button -> ((IECreateWorldScreen) this$0).ip_openDimStackScreen()
             ).width(210).build()
         );
     }

@@ -30,7 +30,6 @@ import qouteall.imm_ptl.core.api.PortalAPI;
 import qouteall.imm_ptl.core.collision.CollisionHelper;
 import qouteall.imm_ptl.core.collision.PortalCollisionHandler;
 import qouteall.imm_ptl.core.compat.GravityChangerInterface;
-import qouteall.imm_ptl.core.ducks.IEAbstractClientPlayer;
 import qouteall.imm_ptl.core.ducks.IEClientPlayNetworkHandler;
 import qouteall.imm_ptl.core.ducks.IEEntity;
 import qouteall.imm_ptl.core.ducks.IEParticleManager;
@@ -473,7 +472,6 @@ public class ClientTeleportationManager {
         ((IEEntity) player).ip_unsetRemoved();
         
         toWorld.addEntity(player);
-        ((IEAbstractClientPlayer) player).ip_setClientLevel(toWorld);
         
         client.level = toWorld;
         // switch the LevelRenderer, LevelExtractor and lightmap to the new dimension's

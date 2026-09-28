@@ -35,6 +35,10 @@ public class MixinPipelineBuilder_Clipping {
             return null;
         }
         
+        // some shaders declare the Projection block inline instead of including projection.glsl;
+        // the block must be the same everywhere
+        source = PortalClipping.transformProjectionInclude(source);
+        
         Identifier vertexId = pipeline.getShaders().get(ShaderType.VERTEX);
         if (vertexId == null) {
             return source;

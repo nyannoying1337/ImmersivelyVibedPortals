@@ -20,6 +20,7 @@ import qouteall.imm_ptl.core.portal.animation.StableClientTimer;
 import qouteall.imm_ptl.core.render.CrossPortalEntityRenderer;
 import qouteall.imm_ptl.core.render.ForceMainThreadRebuild;
 import qouteall.imm_ptl.core.render.GuiPortalRendering;
+import qouteall.imm_ptl.core.render.ImmPtlDebugScreenEntry;
 import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.teleportation.ClientTeleportationManager;
 import qouteall.q_misc_util.dimension.DimensionIntId;
@@ -81,6 +82,8 @@ public class IPModMainClient {
             
             
             PortalViewRenderer.init();
+            
+            ImmPtlDebugScreenEntry.init();
             
             
         });

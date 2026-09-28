@@ -12,7 +12,8 @@ import qouteall.imm_ptl.core.ClientWorldLoader;
 @Mixin(value = InvalidateRenderStateCallback.class, remap = false)
 public interface MixinFabricInvalidateRenderStateCallback {
     @Inject(
-        method = "lambda$static$0",
+        // the event invoker (lambda$static$0 is the factory that creates it)
+        method = "lambda$static$1",
         at = @At("HEAD"),
         cancellable = true
     )

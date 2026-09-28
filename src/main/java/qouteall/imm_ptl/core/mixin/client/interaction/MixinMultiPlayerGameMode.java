@@ -39,7 +39,7 @@ public abstract class MixinMultiPlayerGameMode implements IEClientPlayerInteract
     
     // the player level field is not being switched now
     @Redirect(
-        method = "method_41930", // lambda in startDestroyBlock
+        method = "lambda$startDestroyBlock$1", // the prediction lambda in startDestroyBlock
         at = @At(
             value = "INVOKE",
             target = "Lnet/minecraft/client/player/LocalPlayer;level()Lnet/minecraft/world/level/Level;"

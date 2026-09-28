@@ -17,7 +17,6 @@ public interface IEClientWorld {
     
     void ip_setGlobalPortals(List<Portal> arg);
     
-    void ip_resetWorldRendererRef();
     
     EntityTickList ip_getEntityList();
     

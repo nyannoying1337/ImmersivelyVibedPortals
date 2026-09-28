@@ -42,16 +42,6 @@ public abstract class MixinLevel implements IEWorld {
     @Final
     private Thread thread;
     
-    // Fix overworld rain cause nether fog change
-    @Inject(method = "Lnet/minecraft/world/level/Level;prepareWeather()V", at = @At("TAIL"))
-    private void onInitWeatherGradients(CallbackInfo ci) {
-        if (dimension() == Level.NETHER) {
-            rainLevel = 0;
-            oRainLevel = 0;
-            thunderLevel = 0;
-            oThunderLevel = 0;
-        }
-    }
     
     @Override
     public WritableLevelData ip_getLevelData() {

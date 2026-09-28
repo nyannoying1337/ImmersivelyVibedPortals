@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.extract.LevelExtractor;
 import net.minecraft.util.profiling.Profiler;
 import org.jetbrains.annotations.Nullable;
+import org.objectweb.asm.Opcodes;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -125,10 +126,11 @@ public abstract class MixinMinecraft implements IEMinecraftClient {
     }
     
     @Inject(
-        method = "Lnet/minecraft/client/Minecraft;runTick(Z)V",
+        method = "Lnet/minecraft/client/Minecraft;renderFrame(Z)V",
         at = @At(
             value = "FIELD",
             target = "Lnet/minecraft/client/Minecraft;fps:I",
+            opcode = Opcodes.PUTSTATIC,
             shift = At.Shift.AFTER
         )
     )

@@ -14,7 +14,7 @@ import qouteall.imm_ptl.core.block_manipulation.BlockManipulationClient;
 @Mixin(Minecraft.class)
 public abstract class MixinMinecraft_B {
     @Shadow
-    protected abstract void pickBlock();
+    protected abstract void pickBlockOrEntity();
     
     @Shadow
     public ClientLevel level;
@@ -23,7 +23,7 @@ public abstract class MixinMinecraft_B {
     public HitResult hitResult;
     
     @Shadow
-    protected int missTime;
+    public int missTime;
     
     @Shadow
     protected abstract boolean startAttack();
@@ -104,7 +104,7 @@ public abstract class MixinMinecraft_B {
         method = "handleKeybinds",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/client/Minecraft;pickBlock()V"
+            target = "Lnet/minecraft/client/Minecraft;pickBlockOrEntity()V"
         )
     )
     private void wrapPickBlock(Minecraft instance, Operation<Void> original) {
