@@ -201,10 +201,18 @@ public class PortalVisualTest implements FabricClientGameTest {
         ctx.takeScreenshot(TestScreenshotOptions.of(p.name).disableCounterPrefix().withDestinationDir(out));
         String row = ctx.computeOnClient(mc -> {
             Vec3 c = mc.gameRenderer.mainCamera().position();
+            // diagnostics: section visibility of the main view's renderer and the overworld renderer
+            var main = mc.levelRenderer;
+            var other = ClientWorldLoader.getWorldRenderer(
+                mc.level.dimension() == Level.NETHER ? Level.OVERWORLD : Level.NETHER
+            );
             return String.format(
-                Locale.ROOT, "%s,%s,%.5f,%.5f,%.5f,%.1f,%.1f%n",
+                Locale.ROOT, "%s,%s,%.5f,%.5f,%.5f,%.1f,%.1f,mainVisible=%d,mainNearby=%d,mainRendered=%d,mainAllDone=%b,otherVisible=%d%n",
                 p.name, mc.level.dimension().identifier(), c.x, c.y, c.z,
-                mc.player.getYRot(), mc.player.getXRot()
+                mc.player.getYRot(), mc.player.getXRot(),
+                main.visibleSections().size(), main.nearbyVisibleSections().size(),
+                mc.levelExtractor.countRenderedSections(), main.hasRenderedAllSections(),
+                other.visibleSections().size()
             );
         });
         try {

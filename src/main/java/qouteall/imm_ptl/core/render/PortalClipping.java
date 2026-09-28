@@ -40,6 +40,8 @@ public class PortalClipping {
     private static final Pattern MAIN_PATTERN = Pattern.compile("void\\s+main\\s*\\(\\s*\\)\\s*\\{");
 
     private static final Vector4f currentPlane = new Vector4f(0, 0, 0, 0);
+    
+    private static final double CLIP_PLANE_OFFSET = 0.01;
 
     /**
      * Compute the clip plane of the portal view being rendered, in view space.
@@ -61,9 +63,12 @@ public class PortalClipping {
             Minecraft.getInstance().gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
         Vec3 cameraPos = cameraState.pos;
 
-        // plane in camera-relative world coordinates: keep points p where n . (p + cameraPos - planePos) >= 0
+        // plane in camera-relative world coordinates: keep points p where n . (p + cameraPos - planePos) >= 0.
+        // The plane is moved slightly towards the camera (like the original mod's FrontClipping.ADJUSTMENT),
+        // so that geometry exactly at the portal plane (e.g. the destination frame's faces) isn't cut,
+        // which otherwise leaves 1-pixel cracks along the portal edges.
         Vec3 normal = plane.normal();
-        double d = normal.dot(cameraPos.subtract(plane.pos()));
+        double d = normal.dot(cameraPos.subtract(plane.pos())) + CLIP_PLANE_OFFSET;
         Vector4f relPlane = new Vector4f((float) normal.x, (float) normal.y, (float) normal.z, (float) d);
 
         // to view space: viewPos = V * relPos, so plane_view = transpose(inverse(V)) * plane_rel

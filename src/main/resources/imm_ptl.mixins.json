@@ -126,7 +126,8 @@
     "client.sync.MixinServerboundMovePlayerPacketPos",
     "client.sync.MixinServerBoundMovePlayerPacketPosRot",
     "client.sync.MixinServerboundMovePlayerPacketRot",
-    "client.sync.MixinServerboundMovePlayerPacketStatusOnly"
+    "client.sync.MixinServerboundMovePlayerPacketStatusOnly",
+    "client.render.MixinSectionOcclusionGraph"
   ],
   "injectors": {
     "defaultRequire": 1
