@@ -76,6 +76,23 @@ public class VisibleSectionDiscovery {
      * Note that during a portal view {@code Minecraft.levelRenderer} is switched to the view's dimension's renderer,
      * so it cannot be used to know the main view's renderer.
      */
+    /**
+     * Vanilla computes the main view's visible sections on a background thread, so right after
+     * the player teleports the new dimension's main view has no (or stale) visible sections for a few frames,
+     * which shows as a flash. For those frames the main view uses this class's synchronous discovery too.
+     */
+    private static int syncDiscoveryUntilFrame = -1;
+    
+    public static void onPlayerTeleported() {
+        syncDiscoveryUntilFrame = RenderStates.frameIndex + 3;
+    }
+    
+    public static boolean shouldUseSyncDiscoveryForMainView(LevelRenderer levelRenderer) {
+        return RenderStates.frameIndex <= syncDiscoveryUntilFrame
+            && levelRenderer == Minecraft.getInstance().levelRenderer
+            && !PortalViewRenderer.isRenderingPortalView();
+    }
+    
     public static boolean isRenderingPortalViewWithMainLevelRenderer(LevelRenderer levelRenderer) {
         if (!PortalViewRenderer.isRenderingPortalView()) {
             return false;

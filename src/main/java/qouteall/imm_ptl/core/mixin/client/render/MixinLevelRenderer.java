@@ -156,7 +156,9 @@ public abstract class MixinLevelRenderer {
      */
     @Inject(method = "sectionOcclusionGraph", at = @At("HEAD"), cancellable = true)
     private void onGetSectionOcclusionGraph(CallbackInfoReturnable<SectionOcclusionGraph> cir) {
-        if (PortalViewRenderer.isRenderingPortalView()) {
+        if (PortalViewRenderer.isRenderingPortalView()
+            || VisibleSectionDiscovery.shouldUseSyncDiscoveryForMainView((LevelRenderer) (Object) this)
+        ) {
             if (ip_portalViewOcclusionGraph == null) {
                 ip_portalViewOcclusionGraph = new VisibleSectionDiscovery.PortalViewOcclusionGraph(
                     (LevelRenderer) (Object) this, sectionOcclusionGraph

@@ -190,6 +190,8 @@ public abstract class MixinCamera implements IECamera {
         this.hudFov = main.hudFov;
         this.depthFar = main.depthFar;
         setPosition(pos);
+        // sky/fog/cloud colors etc. come from the environment attributes at the camera
+        ((Camera) (Object) this).attributeProbe().tick(newLevel, pos);
         
         Minecraft client = Minecraft.getInstance();
         setupPerspective(
