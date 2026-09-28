@@ -32,6 +32,27 @@ loom {
     accessWidenerPath = file("src/main/resources/imm_ptl.accesswidener")
 }
 
+// Visual test harness (Fabric client gametest): ./gradlew runClientGameTest [-PipBackend=opengl|vulkan]
+// Screenshots of portals from fixed camera poses go to build/visual-test/<backend>/
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "immersive_portals_gametest"
+        enableGameTests = false
+        enableClientGameTests = true
+        clearRunDirectory = true
+    }
+}
+def ipBackend = providers.gradleProperty("ipBackend").getOrElse("opengl")
+loom {
+    runs {
+        clientGameTest {
+            programArgs "--graphicsBackend", ipBackend, "--width", "1280", "--height", "720"
+            property "imm_ptl.visualTest.out", file("build/visual-test/" + ipBackend).absolutePath
+        }
+    }
+}
+
 // TODO(26.3): Sodium/Iris/Gravity Changer compat is not ported yet.
 // These files reference those mods directly and are left out until then.
 sourceSets.main.java {

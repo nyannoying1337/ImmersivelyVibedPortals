@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "immersive_portals_gametest",
+  "version": "1.0.0",
+  "name": "Immersive Portals visual tests",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": ["qouteall.imm_ptl.gametest.PortalVisualTest"]
+  },
+  "depends": {
+    "immersive_portals": "*",
+    "fabric-client-gametest-api-v1": "*"
+  }
+}
