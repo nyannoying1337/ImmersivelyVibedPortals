@@ -12,4 +12,4 @@ of the port/26.3 branch):
 - Removed the stencil, framebuffer and GL-query based renderers and related helpers.
 - Updated mixins, access widener, data (dimension types) and networking to 26.3 APIs.
 - Disabled fetching update/compatibility info from the original author's server.
-- Renamed to "Immersive Portals (Unofficial 26.3 Port)"; contact links point to this port.
+- Renamed to "Immersively Vibed Portals"; contact links point to this port. The mod id stays immersive_portals, so addons and saved data keep working.

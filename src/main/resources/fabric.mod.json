@@ -7,7 +7,7 @@
     "immersive_portals_core"
   ],
   "version": "${version}",
-  "name": "Immersive Portals (Unofficial 26.3 Port)",
+  "name": "Immersively Vibed Portals",
   "description": "See through portals and travel between dimensions seamlessly. Unofficial port of Immersive Portals by qouteall to Minecraft 26.3. Please report issues to the port, not to the original author.",
   "authors": [
     "qouteall (original author)"
@@ -84,6 +84,6 @@
   },
   "accessWidener": "imm_ptl.accesswidener",
   "contributors": [
-    "26.3 port contributors (see GitHub)"
+    "nyannoying1337 (26.3 port)"
   ]
 }

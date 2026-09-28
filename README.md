@@ -1,4 +1,4 @@
-# Immersive Portals: unofficial Minecraft 26.3 port
+# Immersively Vibed Portals: unofficial Minecraft 26.3 port of Immersive Portals
 
 This is an **unofficial** port of [Immersive Portals](https://github.com/iPortalTeam/ImmersivePortalsMod) by qouteall
 to **Minecraft 26.3 (Fabric)**. The original project stopped at Minecraft 1.21.1 and is no longer maintained
@@ -13,11 +13,10 @@ to **Minecraft 26.3 (Fabric)**. The original project stopped at Minecraft 1.21.1
 
 ### Known issues / not ported yet
 - Sodium and Iris are **not supported** yet (the mod refuses to load with them)
-- Global portals (dimension stacks, world wrapping) are not drawn
-- Mirrors may show wrong faces; no clouds inside portal views
+- Third-person view through portals is not ported yet
 - Entities crossing a portal are not cut at the portal plane
 - Old worlds: global portals saved by 1.21.1 are not migrated
-- Only tested on the OpenGL backend
+- Tested on the OpenGL and Vulkan backends with an automated visual test (`./gradlew runClientGameTest`)
 
 ### What changed in the port
 Minecraft 26.x replaced its OpenGL renderer with a new graphics layer (OpenGL or Vulkan, no stencil buffer),
