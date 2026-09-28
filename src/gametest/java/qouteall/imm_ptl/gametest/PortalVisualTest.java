@@ -9,6 +9,8 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.SectionPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -16,9 +18,12 @@ import net.minecraft.world.phys.Vec3;
 import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.McHelper;
+import qouteall.imm_ptl.core.api.PortalAPI;
 import qouteall.imm_ptl.core.miscellaneous.IPortalInitialScreen;
 import qouteall.imm_ptl.core.platform_specific.IPConfig;
+import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
+import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
 import qouteall.imm_ptl.core.portal.PortalManipulation;
 
 import java.io.IOException;
@@ -152,6 +157,8 @@ public class PortalVisualTest implements FabricClientGameTest {
                 shoot(ctx, srv, p);
             }
 
+            shootGlobalPortalAndMirror(ctx, sp, srv);
+
             // walk through the plane with teleportation enabled
             ctx.runOnClient(mc -> IPGlobal.disableTeleportation = false);
             srv.runCommand(NETHER + "tp Player0 1.0 65.0 1.5 180.0 0.0");
@@ -162,6 +169,58 @@ public class PortalVisualTest implements FabricClientGameTest {
                 shoot(ctx, null, new Pose(String.format(Locale.ROOT, "walk_%02d", i), 0, 0, 0, 0, 0));
             }
         }
+    }
+
+    /**
+     * Global portal (not an entity; used for world wrapping and dimension stacks): nether x=-5,
+     * opening z -4.5..-1.5, y 65..68, front side +X, maps nether (x,y,z) -> overworld (x+17, y-125, z+43).
+     * Looking -X through it: overworld grass and sky, the overworld obsidian frame ahead,
+     * the lime wall on the left and the light blue wall on the right. From behind it's invisible.
+     * <p>
+     * Mirror: nether x=6, opening z -5.5..-2.5, y 65..68, facing -X. Looking +X at it shows the nether
+     * reflected: the orange wall stays on the LEFT (-Z), and the global portal (with the overworld)
+     * behind the camera appears in it. Orange on the right means the reflection is flipped wrongly.
+     */
+    void shootGlobalPortalAndMirror(ClientGameTestContext ctx, TestSingleplayerContext sp, TestServerContext srv) {
+        srv.runOnServer(s -> {
+            ServerLevel nether = s.getLevel(Level.NETHER);
+            Portal g = Portal.ENTITY_TYPE.create(nether, EntitySpawnReason.COMMAND);
+            g.setOriginPos(new Vec3(-5.0, 66.5, -3.0));
+            g.setOrientationAndSize(new Vec3(0, 0, -1), new Vec3(0, 1, 0), 3, 3);
+            g.setDestinationDimension(Level.OVERWORLD);
+            g.setDestination(new Vec3(12.0, -58.5, 40.0));
+            PortalAPI.addGlobalPortal(nether, g);
+
+            Mirror m = Mirror.ENTITY_TYPE.create(nether, EntitySpawnReason.COMMAND);
+            m.setOriginPos(new Vec3(6.0, 66.5, -4.0));
+            m.setOrientationAndSize(new Vec3(0, 0, 1), new Vec3(0, 1, 0), 3, 3);
+            m.setDestinationDimension(Level.NETHER);
+            m.setDestination(m.getOriginPos());
+            McHelper.spawnServerEntity(m);
+        });
+        ctx.waitTicks(10);
+        waitViews(ctx, sp, new Vec3(12.0, -58.5, 40.0));
+
+        for (Pose p : List.of(
+            new Pose("global_near", -2.0, 65.0, -3.0, 90, 0),
+            new Pose("global_far", 3.0, 65.0, -3.0, 90, 0),
+            new Pose("global_back", -8.0, 65.0, -3.0, -90, 0),
+            new Pose("mirror_front", 3.0, 65.0, -4.0, -90, 0),
+            new Pose("mirror_diag", 2.0, 65.0, -1.0, -110, 0),
+            new Pose("mirror_close", 5.0, 65.0, -4.0, -90, 10)
+        )) {
+            shoot(ctx, srv, p);
+        }
+
+        // remove them, so that the walk sequence sees the same scene as before
+        srv.runOnServer(s -> {
+            ServerLevel nether = s.getLevel(Level.NETHER);
+            for (Portal p : List.copyOf(GlobalPortalStorage.getGlobalPortals(nether))) {
+                PortalAPI.removeGlobalPortal(nether, p);
+            }
+            nether.getEntitiesOfClass(Mirror.class, new AABB(0, 60, -10, 10, 72, 0)).forEach(Entity::discard);
+        });
+        ctx.waitTicks(10);
     }
 
     static void waitIdle(ClientGameTestContext ctx) {

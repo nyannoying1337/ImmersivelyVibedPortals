@@ -36,8 +36,15 @@ import java.util.List;
  * and has its own render type, so the surface can be submitted like normal entity geometry.
  */
 public class PortalSurfaceRendering {
-    public static final RenderPipeline PORTAL_VIEW_PIPELINE = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
-        .withLocation(Identifier.fromNamespaceAndPath("immersive_portals", "pipeline/portal_view"))
+    public static final RenderPipeline PORTAL_VIEW_PIPELINE = createPipeline("pipeline/portal_view", false);
+    // samples the view with x flipped: a mirrored view seen from a non-mirrored view or vice versa
+    // (mirrored views are rendered with a horizontally flipped projection, see MixinGameRenderer)
+    public static final RenderPipeline PORTAL_VIEW_FLIPPED_PIPELINE =
+        createPipeline("pipeline/portal_view_flipped", true);
+
+    private static RenderPipeline createPipeline(String path, boolean flipX) {
+        RenderPipeline.Builder builder = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
+        .withLocation(Identifier.fromNamespaceAndPath("immersive_portals", path))
         .withBindGroupLayout(BindGroupLayouts.PROJECTION)
         .withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
         .withVertexShader(Identifier.fromNamespaceAndPath("immersive_portals", "core/portal_view"))
@@ -48,10 +55,15 @@ public class PortalSurfaceRendering {
         .withColorTargetState(ColorTargetState.DEFAULT)
         .withDepthStencilState(DepthStencilState.DEFAULT)
         // the portal can be seen from both sides (e.g. mirrors are culled by other means)
-        .withCull(false)
-        .build();
+        .withCull(false);
+        if (flipX) {
+            builder.withShaderDefine("IMMPTL_FLIP_X");
+        }
+        return builder.build();
+    }
 
     private static final List<RenderType> renderTypes = new ArrayList<>();
+    private static final List<RenderType> flippedRenderTypes = new ArrayList<>();
 
     /**
      * A texture whose image is a portal view target's color attachment.
@@ -90,10 +102,17 @@ public class PortalSurfaceRendering {
 
         while (renderTypes.size() <= index) {
             renderTypes.add(null);
+            flippedRenderTypes.add(null);
         }
         renderTypes.set(index, RenderType.create(
             "immersive_portals:portal_view_" + index,
             RenderSetup.builder(PORTAL_VIEW_PIPELINE)
+                .withTexture("Sampler0", id)
+                .createRenderSetup()
+        ));
+        flippedRenderTypes.set(index, RenderType.create(
+            "immersive_portals:portal_view_flipped_" + index,
+            RenderSetup.builder(PORTAL_VIEW_FLIPPED_PIPELINE)
                 .withTexture("Sampler0", id)
                 .createRenderSetup()
         ));
@@ -106,6 +125,7 @@ public class PortalSurfaceRendering {
             );
         }
         renderTypes.clear();
+        flippedRenderTypes.clear();
     }
 
     /**
@@ -135,7 +155,8 @@ public class PortalSurfaceRendering {
         if (index < 0 || index >= renderTypes.size()) {
             return null;
         }
-        return renderTypes.get(index);
+        return PortalViewRenderer.shouldFlipSampling(portal) ?
+            flippedRenderTypes.get(index) : renderTypes.get(index);
     }
 
     /**

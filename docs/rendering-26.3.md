@@ -102,3 +102,17 @@ reads the camera state asynchronously, so `MixinSectionOcclusionGraph` passes it
 nether->overworld portal scene with coloured marker walls, takes screenshots from fixed camera poses around
 and inside the portal plane plus a walk through it, and writes `build/visual-test/<backend>/*.png` and
 `poses.csv` (with section-visibility diagnostics). Expected images are described in `PortalVisualTest`.
+
+## Mirrors
+A mirror view's rotation contains a reflection, which reverses triangle winding, so backface culling would
+remove the front faces. A view whose combined camera transformation has a negative determinant
+(`ViewNode.isMirrored`) is rendered with its projection flipped horizontally (`MixinGameRenderer.modifyLevelProjection`),
+which restores the winding. The image is then mirrored left-right, so a portal surface samples its view with x flipped
+when exactly one of the two views (the one drawing the surface and the portal's own) is mirrored
+(`portal_view_flipped` pipeline, `IMMPTL_FLIP_X`). Nested mirrors and portals seen in mirrors follow from that rule.
+
+## Global portals
+Global portals (world wrapping, dimension stacks) are not in the level's entity list. Their surfaces are
+extracted at the end of `LevelExtractor.extractVisibleEntities`, and their views are planned with the others.
+On the client they are created from NBT with entity id 0, and in 26.3 `Entity.getId()`/`hashCode()`/`equals()`
+throw for id 0, so `GlobalPortalStorage` gives them unique negative ids. Maps keyed by portals use identity.

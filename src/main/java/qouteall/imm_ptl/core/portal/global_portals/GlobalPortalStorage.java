@@ -51,6 +51,7 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
 /**
@@ -60,6 +61,9 @@ import java.util.function.Predicate;
 @SuppressWarnings("resource")
 public class GlobalPortalStorage extends SavedData {
     private static final Logger LOGGER = LogUtils.getLogger();
+    // ids for client-side global portals, counting down from far below any real entity id
+    private static final AtomicInteger CLIENT_GLOBAL_PORTAL_ID_COUNTER =
+        new AtomicInteger(-1_000_000);
     
     public List<Portal> data;
     public final WeakReference<ServerLevel> world;
@@ -268,7 +272,14 @@ public class GlobalPortalStorage extends SavedData {
         }
         
         ((Portal) e).isGlobalPortal = true;
-        
+
+        // In 26.3 a client-side entity gets id 0 until the server assigns one, and getId()/hashCode()/equals()
+        // throw for id 0. Global portals are never in the level's entity list, so give them unique ids
+        // that can't collide with real entities.
+        if (currWorld.isClientSide()) {
+            e.setId(CLIENT_GLOBAL_PORTAL_ID_COUNTER.decrementAndGet());
+        }
+
         // normal portals' bounding boxes are limited
         // update to non-limited bounding box
         ((Portal) e).updateCache();

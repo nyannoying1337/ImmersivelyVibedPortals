@@ -43,7 +43,7 @@ import qouteall.q_misc_util.my_util.LimitedLogger;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -79,7 +79,11 @@ public class PortalViewRenderer {
         public final Vec3 cameraPos;
         // the product of the portals' camera transformations from the main view to this view
         public final @Nullable Matrix4f cameraTransformation;
-        public final Map<Portal, TextureTarget> childTargets = new HashMap<>();
+        public final Map<Portal, TextureTarget> childTargets = new IdentityHashMap<>(); // global portals have no entity id (hashCode throws)
+        public final Map<Portal, ViewNode> children = new IdentityHashMap<>();
+        // odd number of mirrors: the view is rendered with a horizontally flipped projection,
+        // so that triangle winding (backface culling) stays correct. See docs/rendering-26.3.md.
+        public final boolean isMirrored;
 
         private ViewNode(
             boolean isMainView, @Nullable ViewNode parent, @Nullable Portal portal,
@@ -90,6 +94,7 @@ public class PortalViewRenderer {
             this.portal = portal;
             this.cameraPos = cameraPos;
             this.cameraTransformation = cameraTransformation;
+            this.isMirrored = cameraTransformation != null && cameraTransformation.determinant3x3() < 0;
         }
     }
 
@@ -113,6 +118,23 @@ public class PortalViewRenderer {
             return null;
         }
         return node.childTargets.get(portal);
+    }
+
+    /**
+     * Whether a portal's view texture must be sampled with x flipped in the view being rendered now:
+     * when exactly one of the two views is mirrored.
+     */
+    public static boolean shouldFlipSampling(Portal portal) {
+        ViewNode node = currentNode != null ? currentNode : rootNode;
+        if (node == null) {
+            return false;
+        }
+        ViewNode child = node.children.get(portal);
+        return child != null && child.isMirrored != node.isMirrored;
+    }
+
+    public static boolean isCurrentViewMirrored() {
+        return currentNode != null && currentNode.isMirrored;
     }
 
     public static int getTargetIndex(TextureTarget target) {
@@ -191,6 +213,7 @@ public class PortalViewRenderer {
                 cameraTransformation
             );
             node.childTargets.put(portal, target);
+            node.children.put(portal, child);
 
             WorldRenderInfo worldRenderInfo = new WorldRenderInfo.Builder()
                 .setWorld(destLevel)
