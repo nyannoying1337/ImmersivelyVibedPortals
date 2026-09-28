@@ -69,12 +69,12 @@ Everything happens on the render thread in order, so the per-dimension `LevelRen
 ### Per-view buffer instances
 - Fog: `GameRenderer.fogRenderer` is swapped to a pooled `FogRenderer` per view index; call `endFrame()` on all pooled instances each frame.
 - Lightmap: one `Lightmap` per dimension; render it once per frame per dimension (first view that needs it).
-- Clouds: `CloudRenderer` is per `LevelRenderer` (per dimension) and single-slot. MVP: no clouds in portal views. (TODO: per-view cloud buffers.)
+- Clouds: `CloudRenderer` holds one cloud position per frame, so each portal view swaps a pooled `CloudRenderer` into its `LevelRenderer` (`IELevelRenderer_Clouds`), like the fog renderers. Otherwise views sharing a dimension with the main view or with each other overwrite its cloud offsets.
 - Projection / globals: shared, written with `writeToBuffer` per view (safe).
 
 ## MVP scope (first playable build)
 In: views for normal portals and one+ nesting levels, front clipping, portal surface drawing, per-dimension renderers, entities in views.
-Out for now (TODO(26.3)): clouds in views, stencil-like exact portal-shape culling of view contents beyond front clipping,
+Out for now (TODO(26.3)): stencil-like exact portal-shape culling of view contents beyond front clipping,
 occlusion-query based skipping, Sodium/Iris, cross-portal entity rendering polish, GUI portal rendering, fuse-view/isometric edge cases.
 
 Old classes to delete or reduce once replaced: `RendererUsingStencil`, `QueryManager`, `GlQueryObject`, `SecondaryFrameBuffer`,

@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.screenshot.TestScreenshotOptions;
+import net.minecraft.client.CloudStatus;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -85,6 +86,8 @@ public class PortalVisualTest implements FabricClientGameTest {
             mc.options.bobView().set(false);
             mc.options.fov().set(70);
             mc.options.renderDistance().set(8);
+            // (the gametest framework turns clouds off)
+            mc.options.cloudStatus().set(CloudStatus.FANCY);
         });
         ctx.waitForScreen(TitleScreen.class);
 
@@ -158,6 +161,7 @@ public class PortalVisualTest implements FabricClientGameTest {
             }
 
             shootGlobalPortalAndMirror(ctx, sp, srv);
+            shootClouds(ctx, sp, srv);
 
             // walk through the plane with teleportation enabled
             ctx.runOnClient(mc -> IPGlobal.disableTeleportation = false);
@@ -220,6 +224,39 @@ public class PortalVisualTest implements FabricClientGameTest {
             }
             nether.getEntitiesOfClass(Mirror.class, new AABB(0, 60, -10, 10, 72, 0)).forEach(Entity::discard);
         });
+        ctx.waitTicks(10);
+    }
+
+    /**
+     * Cloud portal: nether x 4..6, y 65..68, plane z=0.5 (right next to the nether portal, same facing +Z),
+     * to the overworld at y~188, just below the clouds (bottom ~y=192). Looking -Z from the front,
+     * the nether portal (left, x 0..2) and the cloud portal (right) both show the overworld,
+     * so two views share the overworld's LevelRenderer. Expected: the cloud portal shows sky with
+     * white cloud blocks overhead; the nether portal shows the overworld scene as before.
+     */
+    void shootClouds(ClientGameTestContext ctx, TestSingleplayerContext sp, TestServerContext srv) {
+        srv.runOnServer(s -> {
+            ServerLevel nether = s.getLevel(Level.NETHER);
+            Portal p = Portal.ENTITY_TYPE.create(nether, EntitySpawnReason.COMMAND);
+            p.setOriginPos(new Vec3(5.0, 66.5, 0.5));
+            p.setOrientationAndSize(new Vec3(1, 0, 0), new Vec3(0, 1, 0), 2, 3);
+            p.setDestinationDimension(Level.OVERWORLD);
+            p.setDestination(new Vec3(5.0, 188.0, 60.5));
+            McHelper.spawnServerEntity(p);
+        });
+        ctx.waitTicks(10);
+        waitViews(ctx, sp, new Vec3(5.0, 188.0, 60.5));
+
+        for (Pose p : List.of(
+            new Pose("clouds_both", 3.0, 65.0, 5.0, 180, -15),
+            new Pose("clouds_close", 5.0, 65.0, 1.5, 180, -30)
+        )) {
+            shoot(ctx, srv, p);
+        }
+
+        srv.runOnServer(s -> s.getLevel(Level.NETHER)
+            .getEntitiesOfClass(Portal.class, new AABB(3.5, 60, 0, 6.5, 72, 1))
+            .forEach(Entity::discard));
         ctx.waitTicks(10);
     }
 

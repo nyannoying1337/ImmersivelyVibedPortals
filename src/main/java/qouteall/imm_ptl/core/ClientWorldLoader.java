@@ -39,6 +39,7 @@ import qouteall.imm_ptl.core.ducks.IEWorld;
 import qouteall.imm_ptl.core.mixin.client.accessor.IEClientLevelData;
 import qouteall.imm_ptl.core.mixin.client.accessor.IEClientLevel_Accessor;
 import qouteall.imm_ptl.core.portal.Portal;
+import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.context_management.DimensionRenderHelper;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.q_misc_util.Helper;
@@ -469,6 +470,7 @@ public class ClientWorldLoader {
             RENDER_HELPER_MAP.values().stream()
                 .filter(h -> !h.isCurrent())
                 .forEach(h -> h.onResourceReload(CLIENT.getResourceManager()));
+            PortalViewRenderer.onResourceReload();
         }
     }
 

@@ -7,6 +7,7 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.CloudRenderer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.Lightmap;
@@ -29,9 +30,11 @@ import qouteall.imm_ptl.core.IPCGlobal;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.block_manipulation.BlockManipulationClient;
 import qouteall.imm_ptl.core.ducks.IECamera;
+import qouteall.imm_ptl.core.ducks.IECloudRenderer;
 import qouteall.imm_ptl.core.ducks.IEGameRenderer;
 import qouteall.imm_ptl.core.ducks.IEMinecraftClient;
 import qouteall.imm_ptl.core.ducks.IEParticleManager;
+import qouteall.imm_ptl.core.mixin.client.accessor.IELevelRenderer_Clouds;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
 import qouteall.imm_ptl.core.render.context_management.DimensionRenderHelper;
@@ -66,6 +69,11 @@ public class PortalViewRenderer {
     // one FogRenderer per portal view in a frame (its buffer holds only one value per frame)
     private static final List<FogRenderer> fogRendererPool = new ArrayList<>();
     private static int fogRenderersUsed = 0;
+
+    // one CloudRenderer per portal view in a frame, for the same reason
+    // (and its mesh buffer is rebuilt when the camera moves to another cloud cell)
+    private static final List<CloudRenderer> cloudRendererPool = new ArrayList<>();
+    private static int cloudRenderersUsed = 0;
 
     /**
      * A view: the main view (root), the view through a portal, or a GUI world view.
@@ -144,6 +152,7 @@ public class PortalViewRenderer {
     public static void renderPortalViews(DeltaTracker deltaTracker) {
         targetPool.beginFrame();
         fogRenderersUsed = 0;
+        cloudRenderersUsed = 0;
         rootNode = null;
         currentNode = null;
 
@@ -299,6 +308,7 @@ public class PortalViewRenderer {
         LevelExtractor oldLevelExtractor = client.levelExtractor;
         Lightmap oldLightmap = ieGameRenderer.ip_getLightmap();
         FogRenderer oldFogRenderer = ieGameRenderer.ip_getFogRenderer();
+        CloudRenderer oldCloudRenderer = renderHelper.levelRenderer.cloudRenderer();
         Camera oldCamera = gameRenderer.mainCamera();
         @Nullable RenderTarget oldTargetOverride = ieGameRenderer.ip_getMainRenderTargetOverride();
         boolean oldSmartCull = client.smartCull;
@@ -324,6 +334,7 @@ public class PortalViewRenderer {
         ((IEParticleManager) client.particleEngine).ip_setWorld(destLevel);
         ieGameRenderer.ip_setLightmap(renderHelper.lightmap);
         ieGameRenderer.ip_setFogRenderer(acquireFogRenderer());
+        ((IELevelRenderer_Clouds) renderHelper.levelRenderer).ip_setCloudRenderer(acquireCloudRenderer());
         ieGameRenderer.ip_setCamera(viewCamera);
         // directional block lighting differs per dimension (e.g. the nether)
         gameRenderer.lighting().updateLevel(destLevel.dimensionType().cardinalLightType());
@@ -358,6 +369,7 @@ public class PortalViewRenderer {
             ieGameRenderer.ip_setMainRenderTargetOverride(oldTargetOverride);
             ieGameRenderer.ip_setCamera(oldCamera);
             ieGameRenderer.ip_setFogRenderer(oldFogRenderer);
+            ((IELevelRenderer_Clouds) renderHelper.levelRenderer).ip_setCloudRenderer(oldCloudRenderer);
             ieGameRenderer.ip_setLightmap(oldLightmap);
             ((IEParticleManager) client.particleEngine).ip_setWorld(oldLevel);
             ((IEMinecraftClient) client).ip_setLevelRendererAndExtractor(oldLevelRenderer, oldLevelExtractor);
@@ -432,12 +444,30 @@ public class PortalViewRenderer {
         return fogRendererPool.get(fogRenderersUsed++);
     }
 
+    private static CloudRenderer acquireCloudRenderer() {
+        if (cloudRenderersUsed >= cloudRendererPool.size()) {
+            CloudRenderer cloudRenderer = new CloudRenderer();
+            ((IECloudRenderer) cloudRenderer).ip_reloadNow(client.getResourceManager());
+            cloudRendererPool.add(cloudRenderer);
+        }
+        return cloudRendererPool.get(cloudRenderersUsed++);
+    }
+
     /**
      * Called at the end of each frame.
      */
     public static void onEndFrame() {
         for (FogRenderer fogRenderer : fogRendererPool) {
             fogRenderer.endFrame();
+        }
+        for (CloudRenderer cloudRenderer : cloudRendererPool) {
+            cloudRenderer.endFrame();
+        }
+    }
+
+    public static void onResourceReload() {
+        for (CloudRenderer cloudRenderer : cloudRendererPool) {
+            ((IECloudRenderer) cloudRenderer).ip_reloadNow(client.getResourceManager());
         }
     }
 
@@ -448,6 +478,10 @@ public class PortalViewRenderer {
                 fogRenderer.close();
             }
             fogRendererPool.clear();
+            for (CloudRenderer cloudRenderer : cloudRendererPool) {
+                cloudRenderer.close();
+            }
+            cloudRendererPool.clear();
             rootNode = null;
             currentNode = null;
         });
