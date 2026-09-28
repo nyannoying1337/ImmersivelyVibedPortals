@@ -3,9 +3,7 @@
 ## 1. GitHub
 
 1. On GitHub, fork `iPortalTeam/ImmersivePortalsMod` and `iPortalTeam/DimLib` (keeps the history and the link to the original).
-2. Replace `YOUR_GITHUB_USER` with your GitHub username in:
-   - `ImmersivePortalsMod/gradle.properties` (`github_repo`) and `ImmersivePortalsMod/README.md`
-   - `DimLib/gradle.properties` (`github_repo`) and `DimLib/README.md`
+2. The repo links use the GitHub user `nyannoying1337` (`github_repo` in both `gradle.properties`, and the READMEs).
 3. Push the `port/26.3` branch of both repos to your forks, and make it the default branch.
    The Immersive Portals CI checks out `<your user>/DimLib` (branch `port/26.3`), so DimLib must be pushed too.
 4. Check the Actions tab: both builds should be green and upload the jar as an artifact.

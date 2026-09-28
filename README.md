@@ -25,7 +25,7 @@ so portal rendering was redesigned: portal views are rendered into offscreen tar
 and portal surfaces sample them. See [docs/rendering-26.3.md](docs/rendering-26.3.md) and [NOTICE](NOTICE).
 
 ### Building
-Clone the [DimLib 26.3 port](https://github.com/YOUR_GITHUB_USER/DimLib) next to this repo (`../DimLib`, branch `port/26.3`),
+Clone the [DimLib 26.3 port](https://github.com/nyannoying1337/DimLib) next to this repo (`../DimLib`, branch `port/26.3`),
 or pass `-Pdimlib_path=<path>`, then run with a JDK 25:
 
 ```
