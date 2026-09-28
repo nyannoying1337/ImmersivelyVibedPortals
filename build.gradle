@@ -53,7 +53,9 @@ loom {
     runs {
         clientGameTest {
             programArgs "--graphicsBackend", ipBackend, "--width", "1280", "--height", "720"
-            property "imm_ptl.visualTest.out", file("build/visual-test/" + ipBackend + (providers.gradleProperty("withSodium").isPresent() ? "-sodium" : "")).absolutePath
+            // -PwithShaders: Iris with the test shaderpack (src/gametest/resources/immptl_test_shaderpack)
+            property "imm_ptl.visualTest.shaders", providers.gradleProperty("withShaders").isPresent().toString()
+            property "imm_ptl.visualTest.out", file("build/visual-test/" + ipBackend + (providers.gradleProperty("withShaders").isPresent() ? "-shaders" : providers.gradleProperty("withIris").isPresent() ? "-iris" : providers.gradleProperty("withSodium").isPresent() ? "-sodium" : "")).absolutePath
         }
     }
 }
@@ -61,7 +63,6 @@ loom {
 // TODO(26.3): Iris/Gravity Changer compat is not ported yet.
 // These files reference those mods directly and are left out until then.
 sourceSets.main.java {
-    exclude 'qouteall/imm_ptl/core/compat/mixin/iris/**'
     exclude 'qouteall/imm_ptl/core/compat/mixin/flywheel/**'
     exclude 'qouteall/imm_ptl/core/compat/mixin/cardinal_comp/**'
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/ExperimentalIrisPortalRenderer.java'
@@ -91,8 +92,14 @@ dependencies {
 
     // Sodium compatibility: compiled against; in dev, run with it via -PwithSodium
     compileOnly "maven.modrinth:sodium:${sodium_version}"
-    if (providers.gradleProperty("withSodium").isPresent()) {
+    compileOnly "maven.modrinth:iris:${iris_version}"
+    gametestCompileOnly "maven.modrinth:iris:${iris_version}"
+    if (providers.gradleProperty("withSodium").isPresent() || providers.gradleProperty("withIris").isPresent() || providers.gradleProperty("withShaders").isPresent()) {
         localRuntime "maven.modrinth:sodium:${sodium_version}"
+    }
+    // Iris compatibility: in dev, run with it via -PwithIris (implies Sodium)
+    if (providers.gradleProperty("withIris").isPresent() || providers.gradleProperty("withShaders").isPresent()) {
+        localRuntime "maven.modrinth:iris:${iris_version}"
     }
 
     api("qouteall.dimlib:dimlib:${dimlib_version}") {

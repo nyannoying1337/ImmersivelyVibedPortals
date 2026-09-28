@@ -7,7 +7,8 @@
   "client": [
     "sodium.MixinSodiumGlobalUniforms",
     "sodium.MixinSodiumRenderSectionManager",
-    "sodium.MixinSodiumWorldRenderer"
+    "sodium.MixinSodiumWorldRenderer",
+    "iris.MixinIrisTransformPatcher"
   ],
   "injectors": {
     "defaultRequire": 1

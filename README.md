@@ -15,7 +15,7 @@ to **Minecraft 26.3 (Fabric)**. The original project stopped at Minecraft 1.21.1
 - DimLib and Cloth Config are bundled
 
 ### Known issues / not ported yet
-- **Iris** (shaders) is **not supported** yet (the mod refuses to load with it). Sodium works.
+- Sodium and Iris work. Shaderpacks are experimental: only tested with a minimal test pack so far, and entities crossing a portal may show on the wrong side with shaders on
 - Third-person view through portals is not ported yet
 - Entities crossing a portal are not cut at the portal plane
 - Old worlds: global portals saved by 1.21.1 are not migrated

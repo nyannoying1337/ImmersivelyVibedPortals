@@ -59,7 +59,6 @@
     "resolutioncontrol": "*",
     "canvas": "*",
     "cardboard": "*",
-    "iris": "*",
     "gravity_api": "*",
     "vmp": "*"
   },

@@ -110,6 +110,74 @@ public class PortalClipping {
         );
     }
 
+    private static final Pattern VERSION_PATTERN = Pattern.compile("#version\\s+(\\d+)");
+    private static final Pattern SODIUM_GLOBALS_LAST_FIELD_PATTERN = Pattern.compile("(bool\\s+u_UseRGSS\\s*;)");
+
+    /**
+     * Iris compiles shaderpack terrain programs from its own generated source (Sodium's vertex format,
+     * Sodium's u_Globals block, which MixinSodiumGlobalUniforms fills with the plane).
+     * Adds the clip distance to such a program: computed in the vertex shader from the vertex position
+     * (independent of how the pack computes gl_Position), and a discard in the fragment shader.
+     * The stages are linked into one program, so the varying matches by name and the u_Globals block is
+     * extended in every stage.
+     *
+     * @param sources the patched sources by stage name ("VERTEX", "FRAGMENT", ...)
+     * @return the transformed sources, or null if the program is not handled
+     */
+    public static @Nullable java.util.Map<String, String> transformIrisSodiumProgram(java.util.Map<String, String> sources) {
+        String vertex = sources.get("VERTEX");
+        String fragment = sources.get("FRAGMENT");
+        if (vertex == null || fragment == null) {
+            return null;
+        }
+        // the clip distance would have to be passed through the other stages
+        for (var e : sources.entrySet()) {
+            if (e.getValue() != null && !e.getKey().equals("VERTEX") && !e.getKey().equals("FRAGMENT")) {
+                return null;
+            }
+        }
+        if (vertex.contains("immptl_ClipDistance")
+            || !vertex.contains("getVertexPosition") || !vertex.contains("u_ModelViewMatrix")
+            || !SODIUM_GLOBALS_LAST_FIELD_PATTERN.matcher(vertex).find()
+            || !MAIN_PATTERN.matcher(vertex).find() || !MAIN_PATTERN.matcher(fragment).find()
+        ) {
+            return null;
+        }
+
+        java.util.Map<String, String> result = new java.util.HashMap<>();
+        for (var e : sources.entrySet()) {
+            String source = e.getValue();
+            if (source != null) {
+                source = SODIUM_GLOBALS_LAST_FIELD_PATTERN.matcher(source).replaceFirst("$1\n    vec4 ImmPtlClipPlane;");
+            }
+            result.put(e.getKey(), source);
+        }
+
+        boolean modern = getGlslVersion(vertex) >= 130;
+
+        // wrap the pack's main, so the clip distance is written after it (and after Iris' vertex init)
+        String v = result.get("VERTEX");
+        v = insertBeforeMain(v, (modern ? "out" : "varying") + " float immptl_ClipDistance;\n");
+        v = MAIN_PATTERN.matcher(v).replaceFirst("void immptl_originalMain() {");
+        v = v + "\nvoid main() {\n    immptl_originalMain();\n"
+            + "    immptl_ClipDistance = dot(ImmPtlClipPlane, u_ModelViewMatrix * getVertexPosition());\n}\n";
+        result.put("VERTEX", v);
+
+        String f = result.get("FRAGMENT");
+        f = insertBeforeMain(f, (getGlslVersion(f) >= 130 ? "in" : "varying") + " float immptl_ClipDistance;\n");
+        Matcher fMain = MAIN_PATTERN.matcher(f);
+        fMain.find();
+        f = f.substring(0, fMain.end()) + "\n    if (immptl_ClipDistance < 0.0) { discard; }\n" + f.substring(fMain.end());
+        result.put("FRAGMENT", f);
+
+        return result;
+    }
+
+    private static int getGlslVersion(String source) {
+        Matcher m = VERSION_PATTERN.matcher(source);
+        return m.find() ? Integer.parseInt(m.group(1)) : 110;
+    }
+
     private static Pattern getGlPositionPattern(Identifier vertexShaderId) {
         return vertexShaderId.getNamespace().equals("sodium") ? SODIUM_GL_POSITION_PATTERN : GL_POSITION_PATTERN;
     }

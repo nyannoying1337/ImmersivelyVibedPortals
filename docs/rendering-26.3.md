@@ -132,3 +132,14 @@ dimension renderer has its own. Things the port does for it (`compat/mixin/sodiu
   the renderer (`MixinSodiumRenderSectionManager`, `MixinSodiumWorldRenderer`).
 - Mirror views get the flipped projection because it is flipped on the extracted camera state, which Sodium reads.
 Run the visual test with Sodium: `./gradlew runClientGameTest -PwithSodium` (output in `build/visual-test/<backend>-sodium`).
+
+## Iris (shaders)
+Iris runs shaderpacks only on the OpenGL backend. Without a shaderpack it behaves like Sodium.
+With a shaderpack, each portal view runs the pack's pipeline for that view (the views render sequentially).
+Front clipping for pack terrain programs: Iris compiles them from its own generated source, so
+`MixinIrisTransformPatcher` post-processes the output of `TransformPatcher.patchSodium` (non-shadow programs):
+the plane is added to Iris' `u_Globals` declaration (the buffer is Sodium's, which carries it), the clip distance
+is computed from `getVertexPosition()` after the pack's `main`, and the fragment shader discards.
+Not clipped yet: pack programs for entities, block entities, particles and the hand (`patchVanilla`).
+Run the visual test with the test shaderpack (`src/gametest/resources/immptl_test_shaderpack`, magenta border):
+`./gradlew runClientGameTest -PwithShaders` (OpenGL only; Iris crashes when Vulkan is forced).

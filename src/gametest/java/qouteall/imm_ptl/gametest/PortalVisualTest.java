@@ -89,6 +89,10 @@ public class PortalVisualTest implements FabricClientGameTest {
             // (the gametest framework turns clouds off)
             mc.options.cloudStatus().set(CloudStatus.FANCY);
         });
+        if (Boolean.getBoolean("imm_ptl.visualTest.shaders")) {
+            // Iris with the test shaderpack (-PwithShaders)
+            ctx.runOnClient(mc -> IrisTestPack.enable());
+        }
         ctx.waitForScreen(TitleScreen.class);
 
         try (TestSingleplayerContext sp = ctx.worldBuilder()
