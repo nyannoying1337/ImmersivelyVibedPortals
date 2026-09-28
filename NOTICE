@@ -1,0 +1,15 @@
+Immersive Portals (unofficial Minecraft 26.3 port)
+
+Original work: Immersive Portals by qouteall and contributors
+https://github.com/iPortalTeam/ImmersivePortalsMod
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This is a modified version. Changes made for the 26.3 port (the full list is in the git history
+of the port/26.3 branch):
+- Ported to Minecraft 26.3, Fabric Loader 0.19 / Loom 1.18 (unobfuscated Minecraft), Java 25.
+- Portal rendering rewritten for Minecraft's new graphics layer (see docs/rendering-26.3.md):
+  offscreen portal views, per-dimension LevelRenderer/LevelExtractor, shader-based front clipping.
+- Removed the stencil, framebuffer and GL-query based renderers and related helpers.
+- Updated mixins, access widener, data (dimension types) and networking to 26.3 APIs.
+- Disabled fetching update/compatibility info from the original author's server.
+- Renamed to "Immersive Portals (Unofficial 26.3 Port)"; contact links point to this port.

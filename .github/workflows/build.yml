@@ -1,0 +1,34 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # DimLib (26.3 port) is built from source, see settings.gradle
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/DimLib
+          ref: port/26.3
+          path: DimLib
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: ./gradlew build -Pdimlib_path=DimLib
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: immersive-portals-jar
+          path: build/libs/*.jar

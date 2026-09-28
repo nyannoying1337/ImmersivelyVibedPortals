@@ -21,3 +21,14 @@ pluginManagement {
 //        }
 //    }
 }
+
+// DimLib (26.3 port) is built from source when it's checked out next to this repo
+// (or at the path given by -Pdimlib_path=...). Otherwise it's taken from mavenLocal.
+def dimlibDir = file(providers.gradleProperty('dimlib_path').getOrElse('../DimLib'))
+if (dimlibDir.exists()) {
+    includeBuild(dimlibDir) {
+        dependencySubstitution {
+            substitute module('qouteall.dimlib:dimlib') using project(':')
+        }
+    }
+}
