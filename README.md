@@ -8,7 +8,7 @@ to **Minecraft 26.3 (Fabric)**. The original project stopped at Minecraft 1.21.1
 > [!WARNING]
 > **BETA: major issues may occur**, including crashes, rendering glitches and world corruption.
 > Back up your worlds before installing it, and don't use it on worlds you can't afford to lose.
-> Downloads: [Modrinth](https://modrinth.com/mod/immersively-vibed-portals). Documentation: [wiki](https://github.com/nyannoying1337/ImmersivelyVibedPortals/wiki).
+> Downloads: [Modrinth](https://modrinth.com/mod/immersively-vibed-portals). **UNDER REVIEW** Documentation: [wiki](https://github.com/nyannoying1337/ImmersivelyVibedPortals/wiki).
 
 ### Requirements
 - Minecraft 26.3, Fabric Loader 0.19.5+, Fabric API 0.161.0+26.3, Java 25
