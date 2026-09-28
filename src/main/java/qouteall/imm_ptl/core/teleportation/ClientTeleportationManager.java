@@ -485,7 +485,9 @@ public class ClientTeleportationManager {
         // the main camera's level (used for sky/fog colors via its attribute probe) and the block lighting type.
         // vanilla does this in Minecraft.updateLevelInEngines, which is not called for seamless teleportation
         client.gameRenderer.setLevel(toWorld);
+        // resample the sky/fog colors now (otherwise they're default/black until the next tick)
         client.gameRenderer.mainCamera().attributeProbe().reset();
+        client.gameRenderer.mainCamera().attributeProbe().tick(toWorld, player.getEyePosition());
         
         if (client.particleEngine != null) {
             // avoid clearing all particles

@@ -20,9 +20,12 @@ import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.resources.Identifier;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import qouteall.imm_ptl.core.portal.Portal;
 
 import java.util.ArrayList;
@@ -120,10 +123,67 @@ public class PortalSurfaceRendering {
             return;
         }
 
+        CameraRenderState camera =
+            Minecraft.getInstance().gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
+        
+        if (isCameraInsidePortal(portal, camera.pos)) {
+            // The camera is (almost) in the portal plane, e.g. while walking through it.
+            // Drawing the mesh would be cut by the near plane and show the world behind the portal,
+            // so cover the whole screen with the portal's view instead.
+            submitNodeCollector.submitCustomGeometry(
+                poseStack, renderType,
+                (pose, buffer) -> outputFullScreenQuad(portal, camera, pose.pose(), buffer)
+            );
+            return;
+        }
+        
         submitNodeCollector.submitCustomGeometry(
             poseStack, renderType,
             (pose, buffer) -> outputPortalMesh(portal, pose.pose(), buffer)
         );
+    }
+    
+    // how close to the portal plane the camera must be to fill the screen with the portal view
+    private static final double INSIDE_PORTAL_DISTANCE = 0.1;
+    
+    private static boolean isCameraInsidePortal(Portal portal, Vec3 cameraPos) {
+        if (Math.abs(portal.getDistanceToPlane(cameraPos)) > INSIDE_PORTAL_DISTANCE) {
+            return false;
+        }
+        return portal.getPortalShape().isBoxInPortalProjection(
+            portal.getThisSideState(), new AABB(cameraPos, cameraPos).inflate(0.01)
+        );
+    }
+    
+    /**
+     * A quad right in front of the camera, covering the whole screen.
+     * Vertices are relative to the portal origin (where the pose is).
+     */
+    private static void outputFullScreenQuad(
+        Portal portal, CameraRenderState camera, Matrix4f pose, VertexConsumer buffer
+    ) {
+        // camera axes in world space, from the view rotation (which includes portal transformations)
+        Matrix4f inverseView = new Matrix4f(camera.viewRotationMatrix).invert();
+        Vector3f forward = inverseView.transformDirection(new Vector3f(0, 0, -1)).normalize();
+        Vector3f right = inverseView.transformDirection(new Vector3f(1, 0, 0)).normalize();
+        Vector3f up = inverseView.transformDirection(new Vector3f(0, 1, 0)).normalize();
+        
+        Vec3 rel = camera.pos.subtract(portal.getOriginPos());
+        // 0.07 is just beyond the 0.05 near plane; a half size of 1 covers a FOV of over 170 degrees
+        Vector3f center = new Vector3f((float) rel.x, (float) rel.y, (float) rel.z).add(forward.mul(0.07f, new Vector3f()));
+        
+        Vector3f p00 = new Vector3f(center).sub(right).sub(up);
+        Vector3f p10 = new Vector3f(center).add(right).sub(up);
+        Vector3f p11 = new Vector3f(center).add(right).add(up);
+        Vector3f p01 = new Vector3f(center).sub(right).add(up);
+        
+        buffer.addVertex(pose, p00.x, p00.y, p00.z);
+        buffer.addVertex(pose, p10.x, p10.y, p10.z);
+        buffer.addVertex(pose, p11.x, p11.y, p11.z);
+        
+        buffer.addVertex(pose, p00.x, p00.y, p00.z);
+        buffer.addVertex(pose, p11.x, p11.y, p11.z);
+        buffer.addVertex(pose, p01.x, p01.y, p01.z);
     }
 
     private static @Nullable RenderType getRenderTypeForPortal(Portal portal) {
