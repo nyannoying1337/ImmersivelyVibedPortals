@@ -46,7 +46,7 @@ public class MixinPipelineBuilder_Clipping {
         
         if (type == ShaderType.VERTEX) {
             if (PortalClipping.shouldTransformVertexShader(vertexId, source)) {
-                return PortalClipping.transformVertexShader(source);
+                return PortalClipping.transformVertexShader(vertexId, source);
             }
         }
         else if (type == ShaderType.FRAGMENT) {

@@ -37,6 +37,9 @@ public class PortalClipping {
 
     private static final Pattern GL_POSITION_PATTERN =
         Pattern.compile("gl_Position\\s*=\\s*ProjMat\\s*\\*\\s*([^;]+);");
+    // Sodium's terrain shader (the plane is added to its u_Globals block, see transformSodiumGlobalsInclude)
+    private static final Pattern SODIUM_GL_POSITION_PATTERN =
+        Pattern.compile("gl_Position\\s*=\\s*u_ProjectionMatrix\\s*\\*\\s*([^;]+);");
     private static final Pattern MAIN_PATTERN = Pattern.compile("void\\s+main\\s*\\(\\s*\\)\\s*\\{");
 
     private static final Vector4f currentPlane = new Vector4f(0, 0, 0, 0);
@@ -96,6 +99,21 @@ public class PortalClipping {
         );
     }
 
+    /**
+     * Sodium's terrain shaders read their uniforms from the u_Globals block (sodium:globals.glsl);
+     * the plane is appended to it, and Sodium's writer is extended accordingly (MixinSodiumGlobalUniforms).
+     */
+    public static String transformSodiumGlobalsInclude(String source) {
+        return source.replaceFirst(
+            "(uniform\\s+u_Globals\\s*\\{[^}]*?)(\\s*\\};)",
+            "$1\n    vec4 ImmPtlClipPlane;$2"
+        );
+    }
+
+    private static Pattern getGlPositionPattern(Identifier vertexShaderId) {
+        return vertexShaderId.getNamespace().equals("sodium") ? SODIUM_GL_POSITION_PATTERN : GL_POSITION_PATTERN;
+    }
+
     public static boolean shouldTransformVertexShader(Identifier vertexShaderId, @Nullable String vertexSource) {
         if (vertexSource == null) {
             return false;
@@ -103,11 +121,11 @@ public class PortalClipping {
         if (EXCLUDED_VERTEX_SHADERS.contains(vertexShaderId.toString())) {
             return false;
         }
-        return GL_POSITION_PATTERN.matcher(vertexSource).find();
+        return getGlPositionPattern(vertexShaderId).matcher(vertexSource).find();
     }
 
-    public static String transformVertexShader(String source) {
-        Matcher matcher = GL_POSITION_PATTERN.matcher(source);
+    public static String transformVertexShader(Identifier vertexShaderId, String source) {
+        Matcher matcher = getGlPositionPattern(vertexShaderId).matcher(source);
         StringBuilder sb = new StringBuilder();
         while (matcher.find()) {
             String viewPosExpr = matcher.group(1);

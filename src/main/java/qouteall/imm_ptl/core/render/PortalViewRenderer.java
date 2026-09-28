@@ -413,6 +413,14 @@ public class PortalViewRenderer {
 
         // extract
         ieGameRenderer.ip_extractCamera(deltaTracker, worldPartialTicks);
+        // A mirror view's rotation contains a reflection, which reverses triangle winding, so backface culling
+        // would cull the wrong faces. Flip the projection horizontally to reverse it back; the portal surface
+        // samples such a view with x flipped (see shouldFlipSampling). Done on the extracted state, which is
+        // the only source of the level projection (GameRenderer.renderLevel), so other renderers
+        // that capture it (e.g. Sodium) get the flipped matrix too.
+        if (isCurrentViewMirrored()) {
+            gameRenderState.levelRenderState.cameraRenderState.projectionMatrix.scaleLocal(-1, 1, 1);
+        }
         client.levelExtractor.extract(deltaTracker, gameRenderer.mainCamera(), worldPartialTicks);
 
         // camera position (and portal clip plane) uniform, written in command order before this view's draws

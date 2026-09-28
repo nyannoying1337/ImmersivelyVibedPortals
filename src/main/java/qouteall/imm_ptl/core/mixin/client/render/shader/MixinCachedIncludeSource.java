@@ -15,6 +15,10 @@ public class MixinCachedIncludeSource {
         if (id.getNamespace().equals("minecraft") && id.getPath().endsWith("projection.glsl")) {
             return PortalClipping.transformProjectionInclude(source);
         }
+        // Sodium's terrain uniforms, see MixinSodiumGlobalUniforms
+        if (id.getNamespace().equals("sodium") && id.getPath().endsWith("globals.glsl")) {
+            return PortalClipping.transformSodiumGlobalsInclude(source);
+        }
         return source;
     }
 }

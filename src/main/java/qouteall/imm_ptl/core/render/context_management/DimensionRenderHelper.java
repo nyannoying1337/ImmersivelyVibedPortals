@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.extract.LevelExtractor;
 import net.minecraft.server.packs.resources.ResourceManager;
 import qouteall.imm_ptl.core.ducks.IECloudRenderer;
 import qouteall.imm_ptl.core.ducks.IEGameRenderer;
+import qouteall.imm_ptl.core.ducks.IEMinecraftClient;
 import qouteall.q_misc_util.Helper;
 
 /**
@@ -83,7 +84,7 @@ public class DimensionRenderHelper {
 
     public record Pending(LevelRenderer levelRenderer, LevelExtractor levelExtractor) {
         public DimensionRenderHelper bindLevel(ClientLevel world) {
-            levelExtractor.setLevel(world);
+            setExtractorLevel(levelRenderer, levelExtractor, world);
             ResourceManager resourceManager = client.getResourceManager();
             levelExtractor.onResourceManagerReload(resourceManager);
             ((IECloudRenderer) levelRenderer.cloudRenderer()).ip_reloadNow(resourceManager);
@@ -95,6 +96,25 @@ public class DimensionRenderHelper {
 
         public void discard() {
             levelRenderer.close();
+        }
+    }
+
+    /**
+     * Set the extractor's level with this dimension's renderer temporarily made current:
+     * other mods attach per-renderer state to the level through {@code Minecraft.levelRenderer}
+     * in {@link LevelExtractor#setLevel} (e.g. Sodium binds its world renderer this way).
+     */
+    private static void setExtractorLevel(
+        LevelRenderer levelRenderer, LevelExtractor levelExtractor, ClientLevel level
+    ) {
+        LevelRenderer oldLevelRenderer = client.levelRenderer;
+        LevelExtractor oldLevelExtractor = client.levelExtractor;
+        ((IEMinecraftClient) client).ip_setLevelRendererAndExtractor(levelRenderer, levelExtractor);
+        try {
+            levelExtractor.setLevel(level);
+        }
+        finally {
+            ((IEMinecraftClient) client).ip_setLevelRendererAndExtractor(oldLevelRenderer, oldLevelExtractor);
         }
     }
 
@@ -129,7 +149,7 @@ public class DimensionRenderHelper {
      */
     public void cleanUp() {
         if (!isVanillaOriginal) {
-            levelExtractor.setLevel(null);
+            setExtractorLevel(levelRenderer, levelExtractor, null);
             levelRenderer.close();
             lightmap.close();
         }

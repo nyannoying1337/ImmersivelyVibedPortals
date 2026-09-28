@@ -4,6 +4,11 @@
   "compatibilityLevel": "JAVA_25",
   "plugin": "qouteall.imm_ptl.core.compat.IPCompatMixinPlugin",
   "mixins": [],
+  "client": [
+    "sodium.MixinSodiumGlobalUniforms",
+    "sodium.MixinSodiumRenderSectionManager",
+    "sodium.MixinSodiumWorldRenderer"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

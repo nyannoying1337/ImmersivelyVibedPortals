@@ -19,10 +19,15 @@ repositories {
     maven { url "https://maven.shedaniel.me/" }
     maven { url "https://maven.terraformersmc.com/releases/" }
 
-    maven {
-        name = "Modrinth"
-        url = "https://api.modrinth.com/maven"
-        content {
+    // only ask Modrinth for Modrinth artifacts (and nobody else)
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Modrinth"
+                url = "https://api.modrinth.com/maven"
+            }
+        }
+        filter {
             includeGroup "maven.modrinth"
         }
     }
@@ -48,26 +53,21 @@ loom {
     runs {
         clientGameTest {
             programArgs "--graphicsBackend", ipBackend, "--width", "1280", "--height", "720"
-            property "imm_ptl.visualTest.out", file("build/visual-test/" + ipBackend).absolutePath
+            property "imm_ptl.visualTest.out", file("build/visual-test/" + ipBackend + (providers.gradleProperty("withSodium").isPresent() ? "-sodium" : "")).absolutePath
         }
     }
 }
 
-// TODO(26.3): Sodium/Iris/Gravity Changer compat is not ported yet.
+// TODO(26.3): Iris/Gravity Changer compat is not ported yet.
 // These files reference those mods directly and are left out until then.
 sourceSets.main.java {
     exclude 'qouteall/imm_ptl/core/compat/mixin/iris/**'
-    exclude 'qouteall/imm_ptl/core/compat/mixin/sodium/**'
     exclude 'qouteall/imm_ptl/core/compat/mixin/flywheel/**'
     exclude 'qouteall/imm_ptl/core/compat/mixin/cardinal_comp/**'
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/ExperimentalIrisPortalRenderer.java'
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/IrisPortalRenderer.java'
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/IrisCompatibilityPortalRenderer.java'
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/OnIrisPresent.java'
-    exclude 'qouteall/imm_ptl/core/compat/sodium_compatibility/OnSodiumPresent.java'
-    exclude 'qouteall/imm_ptl/core/compat/sodium_compatibility/SodiumRenderingContext.java'
-    // only implemented by the (excluded) Sodium mixins, and its signature uses SodiumRenderingContext
-    exclude 'qouteall/imm_ptl/core/compat/sodium_compatibility/IESodiumRenderSectionManager.java'
     exclude 'qouteall/imm_ptl/core/compat/OnGravityChangerPresent.java'
 }
 
@@ -88,6 +88,12 @@ dependencies {
 
     compileOnly "maven.modrinth:modmenu:${modmenu_version}"
     localRuntime "maven.modrinth:modmenu:${modmenu_version}"
+
+    // Sodium compatibility: compiled against; in dev, run with it via -PwithSodium
+    compileOnly "maven.modrinth:sodium:${sodium_version}"
+    if (providers.gradleProperty("withSodium").isPresent()) {
+        localRuntime "maven.modrinth:sodium:${sodium_version}"
+    }
 
     api("qouteall.dimlib:dimlib:${dimlib_version}") {
         exclude(group: "net.fabricmc.fabric-api")

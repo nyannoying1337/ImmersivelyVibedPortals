@@ -60,7 +60,6 @@
     "canvas": "*",
     "cardboard": "*",
     "iris": "*",
-    "sodium": "*",
     "gravity_api": "*",
     "vmp": "*"
   },

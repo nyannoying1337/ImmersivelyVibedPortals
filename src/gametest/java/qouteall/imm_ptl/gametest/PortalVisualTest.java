@@ -104,7 +104,10 @@ public class PortalVisualTest implements FabricClientGameTest {
                 "fill -1 -61 40 2 -57 40 minecraft:obsidian",
                 "fill 0 -60 40 1 -58 40 minecraft:air",
                 "fill -8 -60 34 9 -52 34 minecraft:light_blue_concrete",
-                "fill -8 -60 46 9 -52 46 minecraft:lime_concrete"
+                "fill -8 -60 46 9 -52 46 minecraft:lime_concrete",
+                // front clipping check: this block is between the front-side view cameras and the
+                // destination portal plane, so it must never show up inside the portal from the front side
+                "setblock 1 -59 41 minecraft:red_concrete"
             )) {
                 srv.runCommand(c);
             }

@@ -106,7 +106,8 @@ and inside the portal plane plus a walk through it, and writes `build/visual-tes
 ## Mirrors
 A mirror view's rotation contains a reflection, which reverses triangle winding, so backface culling would
 remove the front faces. A view whose combined camera transformation has a negative determinant
-(`ViewNode.isMirrored`) is rendered with its projection flipped horizontally (`MixinGameRenderer.modifyLevelProjection`),
+(`ViewNode.isMirrored`) is rendered with its projection flipped horizontally (on the extracted camera state in
+`PortalViewRenderer.renderCurrentView`, the only source of the level projection, so Sodium gets it too),
 which restores the winding. The image is then mirrored left-right, so a portal surface samples its view with x flipped
 when exactly one of the two views (the one drawing the surface and the portal's own) is mirrored
 (`portal_view_flipped` pipeline, `IMMPTL_FLIP_X`). Nested mirrors and portals seen in mirrors follow from that rule.
@@ -116,3 +117,18 @@ Global portals (world wrapping, dimension stacks) are not in the level's entity 
 extracted at the end of `LevelExtractor.extractVisibleEntities`, and their views are planned with the others.
 On the client they are created from NBT with entity id 0, and in 26.3 `Entity.getId()`/`hashCode()`/`equals()`
 throw for id 0, so `GlobalPortalStorage` gives them unique negative ids. Maps keyed by portals use identity.
+
+## Sodium
+Sodium replaces the terrain renderer; its `SodiumWorldRenderer` is attached per `LevelRenderer`, so each
+dimension renderer has its own. Things the port does for it (`compat/mixin/sodium`, `OnSodiumPresent`):
+- `LevelExtractor.setLevel` binds the level to the Sodium renderer of `Minecraft.levelRenderer`, so a dimension
+  renderer is made current while its extractor's level is set (`DimensionRenderHelper.setExtractorLevel`).
+- ImmPtl replaces the client chunk cache, so chunk loads are reported to Sodium's chunk tracker (`OnSodiumPresent`).
+- Front clipping: the plane is appended to Sodium's `u_Globals` block (`sodium:globals.glsl` + `MixinSodiumGlobalUniforms`),
+  and its terrain shader is transformed like vanilla's. The plane is part of the uniform record's equality, because
+  `DynamicGpuDataStorageMapped` reuses the previous slot for equal data.
+- Culling: Sodium culls asynchronously and keeps the results per renderer. Portal views skip that and collect their
+  sections synchronously with Sodium's fallback traversal, and their camera doesn't count as a camera movement for
+  the renderer (`MixinSodiumRenderSectionManager`, `MixinSodiumWorldRenderer`).
+- Mirror views get the flipped projection because it is flipped on the extracted camera state, which Sodium reads.
+Run the visual test with Sodium: `./gradlew runClientGameTest -PwithSodium` (output in `build/visual-test/<backend>-sodium`).

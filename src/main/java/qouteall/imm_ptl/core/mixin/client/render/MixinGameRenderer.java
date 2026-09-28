@@ -11,7 +11,6 @@ import net.minecraft.client.renderer.LightmapRenderStateExtractor;
 import net.minecraft.client.renderer.fog.FogRenderer;
 import net.minecraft.util.profiling.Profiler;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
@@ -153,25 +152,6 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
     @Inject(method = "resize", at = @At("RETURN"))
     private void onResized(int width, int height, CallbackInfo ci) {
         ClientWorldLoader._onResize(width, height);
-    }
-
-    /**
-     * A mirror view's rotation contains a reflection, which reverses triangle winding, so backface culling
-     * would cull the wrong faces. Flip the projection horizontally to reverse it back; the portal surface
-     * samples such a view with x flipped (see {@link PortalViewRenderer#shouldFlipSampling}).
-     */
-    @ModifyArg(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/ProjectionMatrixBuffer;getBuffer(Lorg/joml/Matrix4f;)Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;"
-        )
-    )
-    private Matrix4f modifyLevelProjection(Matrix4f projectionMatrix) {
-        if (PortalViewRenderer.isCurrentViewMirrored()) {
-            projectionMatrix.scaleLocal(-1, 1, 1);
-        }
-        return projectionMatrix;
     }
 
     // not using ModifyArgs because ModifyArgs seems broken on Forge
