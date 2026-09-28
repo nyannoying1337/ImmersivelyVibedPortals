@@ -300,6 +300,8 @@ public class PortalViewRenderer {
         ieGameRenderer.ip_setLightmap(renderHelper.lightmap);
         ieGameRenderer.ip_setFogRenderer(acquireFogRenderer());
         ieGameRenderer.ip_setCamera(viewCamera);
+        // directional block lighting differs per dimension (e.g. the nether)
+        gameRenderer.lighting().updateLevel(destLevel.dimensionType().cardinalLightType());
         // the cave culling BFS starts from the camera, which is usually right behind the destination portal
         client.smartCull = false;
         if (BlockManipulationClient.remotePointedDim == destLevel.dimension()) {
@@ -335,6 +337,9 @@ public class PortalViewRenderer {
             ((IEParticleManager) client.particleEngine).ip_setWorld(oldLevel);
             ((IEMinecraftClient) client).ip_setLevelRendererAndExtractor(oldLevelRenderer, oldLevelExtractor);
             client.level = oldLevel;
+            if (oldLevel != null) {
+                gameRenderer.lighting().updateLevel(oldLevel.dimensionType().cardinalLightType());
+            }
             client.smartCull = oldSmartCull;
             client.hitResult = oldHitResult;
             currentNode = oldNode;

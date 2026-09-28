@@ -482,6 +482,10 @@ public class ClientTeleportationManager {
         ClientWorldLoader.switchClientRenderingTo(
             ClientWorldLoader.getDimensionRenderHelper(toDimension)
         );
+        // the main camera's level (used for sky/fog colors via its attribute probe) and the block lighting type.
+        // vanilla does this in Minecraft.updateLevelInEngines, which is not called for seamless teleportation
+        client.gameRenderer.setLevel(toWorld);
+        client.gameRenderer.mainCamera().attributeProbe().reset();
         
         if (client.particleEngine != null) {
             // avoid clearing all particles
