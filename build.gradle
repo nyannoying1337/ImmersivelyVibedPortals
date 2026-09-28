@@ -96,6 +96,7 @@ dependencies {
 
     testImplementation(platform('org.junit:junit-bom:5.10.0'))
     testImplementation('org.junit.jupiter:junit-jupiter')
+    testRuntimeOnly('org.junit.platform:junit-platform-launcher')
 }
 
 processResources {
@@ -133,4 +134,9 @@ publishing {
             from components.java
         }
     }
+}
+
+// unit tests (the visual test is runClientGameTest)
+test {
+    useJUnitPlatform()
 }
