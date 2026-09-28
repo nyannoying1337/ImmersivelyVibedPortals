@@ -89,6 +89,14 @@ public class FrustumCuller {
         if (PortalRendering.isRendering()) {
             Portal renderingPortal = PortalRendering.getRenderingPortal();
             
+            // When the camera is (nearly) on the portal plane, e.g. while walking through the portal,
+            // the frustum through the portal's edges degenerates and would cull everything.
+            // Only use the normal frustum then.
+            Vec3 cameraPosOnThisSide = renderingPortal.inverseTransformPoint(new Vec3(cameraX, cameraY, cameraZ));
+            if (Math.abs(renderingPortal.getDistanceToPlane(cameraPosOnThisSide)) < 0.5) {
+                return null;
+            }
+            
             // do inner frustum culling
             
             return renderingPortal.getPortalShape().getInnerFrustumCullingFunc(
