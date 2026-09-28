@@ -269,11 +269,6 @@ public class PortalViewRenderer {
         IEGameRenderer ieGameRenderer = (IEGameRenderer) gameRenderer;
         DimensionRenderHelper renderHelper = ClientWorldLoader.getDimensionRenderHelper(destLevel.dimension());
 
-        Camera viewCamera = new Camera();
-        ((IECamera) viewCamera).ip_setupAsPortalView(
-            mainCamera, destLevel, node.cameraPos, node.cameraTransformation, replaceRotation
-        );
-
         // save the state that is switched
         ViewNode oldNode = currentNode;
         ClientLevel oldLevel = client.level;
@@ -290,6 +285,13 @@ public class PortalViewRenderer {
             PortalRendering.pushPortalLayer(portal);
         }
         WorldRenderInfo.pushRenderInfo(worldRenderInfo);
+
+        // set up after the portal layer is pushed:
+        // preparing the cull frustum runs FrustumCuller, which depends on the portal being rendered
+        Camera viewCamera = new Camera();
+        ((IECamera) viewCamera).ip_setupAsPortalView(
+            mainCamera, destLevel, node.cameraPos, node.cameraTransformation, replaceRotation
+        );
 
         currentNode = node;
         client.level = destLevel;
@@ -391,10 +393,13 @@ public class PortalViewRenderer {
             gameRenderState.optionsRenderState.textureFiltering == TextureFilteringMethod.RGSS
         );
 
-        // projection, fog, LevelRenderer.render (the hand is skipped in portal views)
-        gameRenderer.renderLevel();
-
-        PortalClipping.resetAfterView();
+        try {
+            // projection, fog, LevelRenderer.render (the hand is skipped in portal views)
+            gameRenderer.renderLevel();
+        }
+        finally {
+            PortalClipping.resetAfterView();
+        }
     }
 
     private static FogRenderer acquireFogRenderer() {

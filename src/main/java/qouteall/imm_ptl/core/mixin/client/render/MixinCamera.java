@@ -17,6 +17,7 @@ import org.joml.Vector3f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -29,6 +30,9 @@ import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 
 @Mixin(Camera.class)
 public abstract class MixinCamera implements IECamera {
+    @Unique
+    private static final float PORTAL_VIEW_NEAR_PLANE = 0.005F;
+    
     @Shadow
     private Vec3 position;
     @Shadow
@@ -194,8 +198,11 @@ public abstract class MixinCamera implements IECamera {
         ((Camera) (Object) this).attributeProbe().tick(newLevel, pos);
         
         Minecraft client = Minecraft.getInstance();
+        // A smaller near plane than vanilla's 0.05: when the player stands in the portal, the view camera is
+        // right behind the destination portal plane, and the content just beyond it must not be near-clipped.
+        // (The original mod used GL depth clamp for this.) Reversed-Z float depth keeps the precision.
         setupPerspective(
-            0.05F, depthFar, fov,
+            PORTAL_VIEW_NEAR_PLANE, depthFar, fov,
             client.getWindow().getWidth(), client.getWindow().getHeight()
         );
         

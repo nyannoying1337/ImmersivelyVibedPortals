@@ -10,15 +10,18 @@
 layout(location = 0) in vec3 Position;
 
 layout(location = 0) out vec4 texProj0;
+layout(location = 1) out vec2 clipDepth;
 
 void main() {
     gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
 
     texProj0 = projection_from_position(gl_Position);
 
-    // Emulate depth clamp (not available in 26.3): when the camera is closer to the portal
-    // than the near plane (e.g. while walking through it), the surface must not be clipped,
-    // otherwise the world behind the portal shows through for those frames.
-    // Depth is reversed-Z, so the near plane is at z == w; keep z <= w.
-    gl_Position.z = min(gl_Position.z, gl_Position.w);
+    // Emulate depth clamp (not available in 26.3), like the original mod's GL_DEPTH_CLAMP:
+    // the surface must not be clipped by the near or far plane, otherwise walking through the portal
+    // shows the world behind it. Put z in the middle of the clip range (so only w > 0 still clips,
+    // like the x/y planes do), and write the real depth per fragment instead.
+    // Depth is reversed-Z and zero-to-one: window depth == z / w.
+    clipDepth = gl_Position.zw;
+    gl_Position.z = 0.5 * gl_Position.w;
 }
