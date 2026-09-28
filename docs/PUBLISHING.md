@@ -26,7 +26,7 @@ Suggested listing:
 - **Loaders / versions:** Fabric, Minecraft 26.3
 - **Dependencies:** Fabric API (required). DimLib and Cloth Config are bundled.
   Mark Sodium and Iris as incompatible (the mod declares `breaks` for them).
-- **Version:** upload `build/libs/immersively-vibed-portals-<version>-mc26.3-fabric.jar`, channel **alpha**.
+- **Version:** upload `build/libs/immersively-vibed-portals-<version>-mc26.3-fabric.jar`, channel **beta**.
 
 Description template:
 
