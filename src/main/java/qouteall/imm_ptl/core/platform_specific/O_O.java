@@ -95,16 +95,9 @@ public class O_O {
     
     @Nullable
     public static String getImmPtlModInfoUrl() {
-        String gameVersion = SharedConstants.getCurrentVersion().name();
-        
-        if (O_O.isForge()) {
-            return "https://qouteall.fun/immptl_info/forge-%s.json".formatted(gameVersion);
-        }
-        else {
-            // it's in github pages
-            // https://github.com/qouteall/immptl_info
-            return "https://qouteall.fun/immptl_info/%s.json".formatted(gameVersion);
-        }
+        // This is an unofficial port. Don't fetch the official mod's update/incompatibility info
+        // (it's for the official releases, and it would send requests to the original author's server).
+        return null;
     }
     
     public static boolean isModLoadedWithinVersion(String modId, @Nullable String startVersion, @Nullable String endVersion) {

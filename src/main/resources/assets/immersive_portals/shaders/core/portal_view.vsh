@@ -15,4 +15,10 @@ void main() {
     gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
 
     texProj0 = projection_from_position(gl_Position);
+
+    // Emulate depth clamp (not available in 26.3): when the camera is closer to the portal
+    // than the near plane (e.g. while walking through it), the surface must not be clipped,
+    // otherwise the world behind the portal shows through for those frames.
+    // Depth is reversed-Z, so the near plane is at z == w; keep z <= w.
+    gl_Position.z = min(gl_Position.z, gl_Position.w);
 }
