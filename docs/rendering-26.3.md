@@ -79,3 +79,26 @@ occlusion-query based skipping, Sodium/Iris, cross-portal entity rendering polis
 
 Old classes to delete or reduce once replaced: `RendererUsingStencil`, `QueryManager`, `GlQueryObject`, `SecondaryFrameBuffer`,
 `MixinGlStateManager`, `MixinRenderSystem_Clipping`, `framebuffer/MixinRenderTarget`, `framebuffer/MixinMainTarget`, stencil parts of `MyRenderHelper`/`ViewAreaRenderer`.
+
+## Camera at the portal plane (walking through)
+- The portal surface emulates GL depth clamp per fragment (`portal_view.vsh/.fsh`: z is set to 0.5w so only
+  w>0 clips, and the real depth is written to gl_FragDepth). The mesh then covers exactly the rays that pass
+  through the opening, at any camera distance, like the original mod's stencil + GL_DEPTH_CLAMP.
+  Do not replace this with a full-screen quad or a per-vertex `min(z, w)`: both were tried and were wrong.
+- Portal view cameras use a 0.005 near plane (the original mod used depth clamp inside views).
+- The front clip plane is moved 0.01 towards the camera (upstream `FrontClipping.ADJUSTMENT`) to avoid
+  1-pixel cracks along the portal edges.
+- The portal layer is pushed before the view camera is set up, because preparing its cull frustum runs
+  `FrustumCuller`, which reads the current portal.
+
+## Shared render state and background threads
+`GameRenderer.gameRenderState()` is shared by the main view and all portal views (they run sequentially).
+Anything that reads it on another thread must get a snapshot: `SectionOcclusionGraph.scheduleFullUpdate`
+reads the camera state asynchronously, so `MixinSectionOcclusionGraph` passes it a copy
+(without it the main view intermittently lost its terrain).
+
+## Visual test
+`./gradlew runClientGameTest [-PipBackend=opengl|vulkan]` (Fabric client gametest, `src/gametest`) builds a
+nether->overworld portal scene with coloured marker walls, takes screenshots from fixed camera poses around
+and inside the portal plane plus a walk through it, and writes `build/visual-test/<backend>/*.png` and
+`poses.csv` (with section-visibility diagnostics). Expected images are described in `PortalVisualTest`.
