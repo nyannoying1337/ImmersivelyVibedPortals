@@ -89,11 +89,7 @@ public class TransformationManager {
      * view rotation matrix: finalViewRotation = viewRotation * animationDelta.
      * Portal views derive their view rotation from the main camera's one (MixinCamera.ip_setupAsPortalView)
      * and then apply the portal transformations, which gives the documented order.
-     * <p>
-     * TODO(26.3): nothing calls this yet. It must be applied to the main camera's cached view rotation matrix
-     *  after {@code Camera.update} (MixinCamera: recompute {@code cachedViewRotMatrix}, apply this,
-     *  mark the view-rotation-projection matrix dirty and re-prepare the cull frustum).
-     *  Until then the camera snaps instead of smoothly rotating after going through a rotating portal.
+     * Called by MixinCamera after {@code Camera.update} (tested by the "rotating portal" feature test).
      *
      * @return the modified matrix
      */
@@ -236,11 +232,8 @@ public class TransformationManager {
     }
 
     /**
-     * TODO(26.3): a mirror transformation flips the triangle winding, so back-face culling culls the wrong faces
-     *  in views through an odd number of mirrors ({@code PortalRendering.isRenderingOddNumberOfMirrors()}).
-     *  1.21.1 disabled culling globally around each draw (MixinMultiBufferSourceBufferSource), which is impossible
-     *  now because culling is part of the RenderPipeline. Possible fix: render mirror views with an x-flipped
-     *  projection (restores winding) and sample the view texture with a flipped x in the portal surface shader.
+     * A mirror transformation flips the triangle winding. Views through an odd number of mirrors are rendered with
+     * an x-flipped projection to restore it, and sampled with x flipped (see PortalViewRenderer.renderCurrentView).
      */
     public static Matrix4f getMirrorTransformation(Vec3 normal) {
         float x = (float) normal.x;

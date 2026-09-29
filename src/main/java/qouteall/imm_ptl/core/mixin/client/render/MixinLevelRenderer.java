@@ -60,11 +60,9 @@ import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
  * <p>
  * Cross-portal entity rendering: an entity touching a portal is clipped by the portal plane on the CPU
  *  (EntityClipping) and its projection is rendered on the other side (CrossPortalEntityRenderer).
- * TODO(26.3): mirror face culling. With an odd number of mirrors the view transformation flips the winding order, so
- *  back-face culling culls the wrong faces (1.21.1 flipped the GL cull face around terrain layers and sky).
- *  Cull mode is fixed in 26.3 RenderPipelines; e.g. render the view with the un-mirrored camera and flip the view texture
- *  horizontally when sampling it on the portal surface.
- * TODO(26.3): depth clamp for portal views (IPGlobal.enableDepthClampForPortalRendering); renderpearl has no depth clamp.
+ * Mirror face culling: views through an odd number of mirrors are rendered with an x-flipped projection (restores the
+ *  triangle winding) and sampled with x flipped (PortalViewRenderer.renderCurrentView, shouldFlipSampling).
+ * Depth clamp: renderpearl has none; the portal surface shader emulates it (portal_view.vsh/fsh).
  */
 @Mixin(value = LevelRenderer.class)
 public abstract class MixinLevelRenderer {

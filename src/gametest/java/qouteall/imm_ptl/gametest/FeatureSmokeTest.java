@@ -100,6 +100,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             section("make_portal command", () -> makePortalCommand(ctx, srv));
             section("world wrapping", () -> worldWrapping(ctx, srv));
             section("dimension stack", () -> dimensionStack(ctx, srv));
+            section("rotating portal", () -> rotatingPortal(ctx, srv));
 
             // global portals for the migration check below
             srv.runCommand("portal global create_inward_wrapping -40 -40 40 40");
@@ -443,7 +444,15 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         check("migration: found saved global portal files to move", !moved.isEmpty(), "");
 
         try (TestSingleplayerContext sp = worldSave.open()) {
-            sp.getConnection().waitForChunksRender();
+            boolean rendered = waitFor(ctx, 1200, () -> ctx.computeOnClient(mc -> mc.levelRenderer.hasRenderedAllSections()));
+            check("migration: the reopened world rendered", rendered, ctx.computeOnClient(mc -> String.format(Locale.ROOT,
+                "renderer is the overworld helper's %b, camera %s",
+                ClientWorldLoader.RENDER_HELPER_MAP.get(Level.OVERWORLD) != null
+                    && ClientWorldLoader.RENDER_HELPER_MAP.get(Level.OVERWORLD).levelRenderer == mc.levelRenderer,
+                mc.gameRenderer.mainCamera().position())));
+            boolean chunksLoaded = waitFor(ctx, 600, () -> missingChunksAroundPlayer(ctx).isEmpty());
+            check("migration: all chunks around the player are loaded", chunksLoaded,
+                "missing " + missingChunksAroundPlayer(ctx));
             TestServerContext srv = sp.getServer();
             int count = srv.computeOnServer(s -> GlobalPortalStorage.getGlobalPortals(s.overworld()).size());
             check("migration: the global portals were loaded from the old file", count == migrationPortalCount,
@@ -455,6 +464,84 @@ public class FeatureSmokeTest implements FabricClientGameTest {
     }
 
     // ---- helpers ----
+
+    /**
+     * A portal that rolls the world by 90 degrees around the walking direction (its normal), which pitch and yaw
+     * can't express. Walking through it, the view must stay continuous (right after the teleport the camera is
+     * still rolled, TransformationManager's animation delta) and then turn upright within the animation (1 s).
+     */
+    private void rotatingPortal(ClientGameTestContext ctx, TestServerContext srv) {
+        int y = groundY(srv, Level.OVERWORLD, 300, 300);
+        srv.runOnServer(s -> {
+            Portal p = Portal.ENTITY_TYPE.create(s.overworld(), net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+            p.setOriginPos(new Vec3(300.5, y + 1.5, 300.5));
+            p.setOrientationAndSize(new Vec3(1, 0, 0), new Vec3(0, 1, 0), 2, 3);
+            p.setDestinationDimension(Level.OVERWORLD);
+            p.setDestination(new Vec3(340.5, y + 1.5, 300.5));
+            p.setRotation(qouteall.q_misc_util.my_util.DQuaternion.rotationByDegrees(new Vec3(0, 0, 1), 90));
+            qouteall.imm_ptl.core.McHelper.spawnServerEntity(p);
+        });
+        srv.runCommand(String.format(Locale.ROOT, "tp Player0 300.5 %d 302.0 180 0", y));
+        ctx.waitTicks(40);
+        ctx.runOnClient(mc -> {
+            mc.player.getAbilities().flying = true;
+            mc.player.onUpdateAbilities();
+        });
+
+        double upBefore = cameraUpY(ctx);
+        boolean teleported = false;
+        double upAfter = Double.NaN;
+        boolean animating = false;
+        for (int i = 0; i < 40 && !teleported; i++) {
+            ctx.runOnClient(mc -> mc.player.setPos(mc.player.getX(), mc.player.getY(), mc.player.getZ() - 0.1));
+            ctx.waitTick();
+            teleported = ctx.computeOnClient(mc -> mc.player.getX() > 320);
+            if (teleported) {
+                upAfter = cameraUpY(ctx);
+                animating = ctx.computeOnClient(mc -> qouteall.imm_ptl.core.render.TransformationManager.isAnimationRunning());
+            }
+        }
+        check("rotating portal: walking through it teleports", teleported,
+            ctx.computeOnClient(mc -> mc.player.position().toString()));
+        if (!teleported) {
+            return;
+        }
+        screenshot(ctx, "rotating_portal_just_after");
+        check("rotating portal: the view is continuous (camera still rolled right after the teleport)",
+            upBefore > 0.99 && Math.abs(upAfter) < 0.5 && animating,
+            String.format(Locale.ROOT, "camera up.y before %.3f after %.3f, animation running %b", upBefore, upAfter, animating));
+        ctx.waitTicks(40);
+        double upLater = cameraUpY(ctx);
+        check("rotating portal: the camera turns upright after the animation", upLater > 0.99,
+            String.format(Locale.ROOT, "camera up.y %.3f", upLater));
+        screenshot(ctx, "rotating_portal_later");
+    }
+
+    // chunks within the render distance of the player that are not in the client chunk cache (max 10 listed)
+    private static List<String> missingChunksAroundPlayer(ClientGameTestContext ctx) {
+        return ctx.computeOnClient(mc -> {
+            List<String> missing = new ArrayList<>();
+            int r = mc.options.getEffectiveRenderDistance();
+            int cx = mc.player.chunkPosition().x();
+            int cz = mc.player.chunkPosition().z();
+            for (int x = cx - r; x <= cx + r && missing.size() < 10; x++) {
+                for (int z = cz - r; z <= cz + r && missing.size() < 10; z++) {
+                    if (!mc.level.getChunkSource().hasChunk(x, z)) {
+                        missing.add(x + "," + z);
+                    }
+                }
+            }
+            return missing;
+        });
+    }
+
+    // the Y component of the main camera's up vector, from its view rotation matrix (includes the animation delta)
+    private static double cameraUpY(ClientGameTestContext ctx) {
+        return ctx.computeOnClient(mc -> {
+            org.joml.Matrix4f viewRotation = mc.gameRenderer.mainCamera().getViewRotationMatrix(new org.joml.Matrix4f());
+            return (double) viewRotation.invert().transformDirection(new org.joml.Vector3f(0, 1, 0)).y;
+        });
+    }
 
     private static void setFlying(TestServerContext srv, boolean flying) {
         srv.runOnServer(s -> s.getPlayerList().getPlayers().forEach(p -> {
