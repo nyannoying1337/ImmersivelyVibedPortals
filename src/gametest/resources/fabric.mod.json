@@ -5,7 +5,11 @@
   "name": "Immersive Portals visual tests",
   "environment": "client",
   "entrypoints": {
-    "fabric-client-gametest": ["qouteall.imm_ptl.gametest.PortalVisualTest"]
+    "fabric-client-gametest": [
+      "qouteall.imm_ptl.gametest.PortalVisualTest",
+      "qouteall.imm_ptl.gametest.FeatureSmokeTest",
+      "qouteall.imm_ptl.gametest.PerfBenchmark"
+    ]
   },
   "depends": {
     "immersive_portals": "*",

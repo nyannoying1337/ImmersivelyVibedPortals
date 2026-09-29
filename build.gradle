@@ -55,6 +55,11 @@ loom {
             programArgs "--graphicsBackend", ipBackend, "--width", "1280", "--height", "720"
             // -PwithShaders: Iris with the test shaderpack (src/gametest/resources/immptl_test_shaderpack)
             property "imm_ptl.visualTest.shaders", providers.gradleProperty("withShaders").isPresent().toString()
+            property "imm_ptl.featureTest.out", file("build/feature-test").absolutePath
+            // -Pperf: run the portal rendering benchmark (PerfBenchmark) and append to build/perf/results.csv
+            property "imm_ptl.perf", providers.gradleProperty("perf").isPresent().toString()
+            property "imm_ptl.perf.out", file("build/perf").absolutePath
+            property "imm_ptl.perf.label", ipBackend + (providers.gradleProperty("withSodium").isPresent() ? "-sodium" : "") + (providers.gradleProperty("perfLabel").isPresent() ? "-" + providers.gradleProperty("perfLabel").get() : "")
             property "imm_ptl.visualTest.out", file("build/visual-test/" + ipBackend + (providers.gradleProperty("withShaders").isPresent() ? "-shaders" : providers.gradleProperty("withIris").isPresent() ? "-iris" : providers.gradleProperty("withSodium").isPresent() ? "-sodium" : "")).absolutePath
         }
     }

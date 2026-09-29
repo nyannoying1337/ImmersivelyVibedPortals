@@ -175,6 +175,7 @@ public class PortalViewRenderer {
         );
         rootNode = root;
 
+        long startNanos = System.nanoTime();
         try {
             renderChildViews(root, mainCamera, deltaTracker);
 
@@ -187,6 +188,24 @@ public class PortalViewRenderer {
         }
         finally {
             currentNode = null;
+            Stats.frames++;
+            Stats.nanos += System.nanoTime() - startNanos;
+            Stats.views += targetPool.getUsedCount();
+        }
+    }
+
+    /**
+     * Cumulative CPU time spent rendering portal views (for benchmarks and the debug screen).
+     */
+    public static final class Stats {
+        public static long frames;
+        public static long nanos;
+        public static long views;
+
+        public static void reset() {
+            frames = 0;
+            nanos = 0;
+            views = 0;
         }
     }
 

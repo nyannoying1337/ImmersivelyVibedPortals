@@ -200,16 +200,19 @@ public class ImmPtlChunkTickets {
                 return true;
             }
             
-            ChunkResult<LevelChunk> resultNow = chunkHolder.getEntityTickingChunkFuture()
+            // The ticket level is 33 - radius (26.3 TicketStorage.addTicketWithRadius), so with radius 1
+            // the chunk only becomes block ticking and its entity ticking future always fails.
+            // Wait until the chunk is fully loaded, which every ticket level here reaches.
+            ChunkResult<LevelChunk> resultNow = chunkHolder.getFullChunkFuture()
                 .getNow(null);
-            
+
             if (resultNow == null) {
                 return false;
             }
-            
+
             if (!resultNow.isSuccess()) {
                 LOGGER.error(
-                    "Chunk loading failure {} {} {}",
+                    "Chunk loading failure {} {}",
                     world, ChunkPos.unpack(chunkPos)
                 );
             }

@@ -50,6 +50,10 @@ public class PortalViewTargetPool {
         return target;
     }
 
+    public int getUsedCount() {
+        return used;
+    }
+
     public int indexOf(TextureTarget target) {
         return targets.indexOf(target);
     }

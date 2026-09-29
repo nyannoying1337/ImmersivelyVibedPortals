@@ -12,6 +12,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientCommonPacketListener;
@@ -40,6 +42,7 @@ import qouteall.imm_ptl.core.IPCGlobal;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.api.PortalAPI;
+import qouteall.imm_ptl.core.mixin.common.mc_util.IESavedDataStorage;
 import qouteall.imm_ptl.core.ducks.IEClientWorld;
 import qouteall.imm_ptl.core.network.ImmPtlNetworking;
 import qouteall.imm_ptl.core.platform_specific.O_O;
@@ -48,6 +51,8 @@ import qouteall.q_misc_util.Helper;
 import qouteall.q_misc_util.MiscHelper;
 
 import java.lang.ref.WeakReference;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -106,14 +111,18 @@ public class GlobalPortalStorage extends SavedData {
         return world.getDataStorage().computeIfAbsent(createSavedDataType(world));
     }
 
-    // TODO(26.3, deferred by user): saved data files are now stored at data/<namespace>/<path>.dat,
-    //  so the old saves' data/global_portal.dat is not read. It may need migration.
+    // Saved data files are stored at data/<namespace>/<path>.dat since 26.x (here
+    // data/immersive_portals/global_portal.dat). The constructor runs when that file doesn't exist,
+    // and then migrates the file of older versions (data/global_portal.dat) if there is one.
     private static SavedDataType<GlobalPortalStorage> createSavedDataType(ServerLevel world) {
         return new SavedDataType<>(
             Identifier.fromNamespaceAndPath("immersive_portals", "global_portal"),
             () -> {
-                LOGGER.info("Global portal storage initialized {}", world.dimension().identifier());
-                return new GlobalPortalStorage(world);
+                GlobalPortalStorage storage = new GlobalPortalStorage(world);
+                if (!storage.loadLegacyFile(world)) {
+                    LOGGER.info("Global portal storage initialized {}", world.dimension().identifier());
+                }
+                return storage;
             },
             CompoundTag.CODEC.xmap(
                 nbt -> {
@@ -215,6 +224,36 @@ public class GlobalPortalStorage extends SavedData {
         );
     }
     
+    /**
+     * Load the global portal file of versions before 26.x (data/global_portal.dat in the dimension's
+     * data folder). The old file is left in place; the data is saved in the new location from now on.
+     *
+     * @return whether an old file was loaded
+     */
+    private boolean loadLegacyFile(ServerLevel world) {
+        Path file = ((IESavedDataStorage) world.getDataStorage()).ip_getDataFolder()
+            .resolve(LEGACY_FILE_NAME);
+        if (!Files.exists(file)) {
+            return false;
+        }
+        try {
+            CompoundTag tag = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap());
+            fromNbt(tag.getCompoundOrEmpty("data"));
+            setDirty(true);
+            LOGGER.info(
+                "Migrated {} global portals of {} from the old save file {}",
+                data.size(), world.dimension().identifier(), file
+            );
+            return true;
+        }
+        catch (Exception e) {
+            LOGGER.error("Failed to migrate the old global portal file {}", file, e);
+            return false;
+        }
+    }
+
+    public static final String LEGACY_FILE_NAME = "global_portal.dat";
+
     public void fromNbt(CompoundTag tag) {
         
         ServerLevel currWorld = world.get();
