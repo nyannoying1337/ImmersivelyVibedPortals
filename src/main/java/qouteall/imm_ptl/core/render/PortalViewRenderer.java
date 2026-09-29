@@ -20,6 +20,9 @@ import net.minecraft.util.profiling.Profiler;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.renderer.ViewArea;
+import net.minecraft.core.SectionPos;
+import qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -327,6 +330,36 @@ public class PortalViewRenderer {
         return result;
     }
 
+    // a view camera further than this from the edge of the main renderer's ViewArea grid uses the far renderer
+    private static final int FAR_VIEW_MIN_MARGIN_SECTIONS = 4;
+
+    /**
+     * The renderer of the view's dimension, or its far view renderer
+     * ({@link DimensionRenderHelper#getOrCreateFarHelper}) when the view is in the player's dimension but far from
+     * the player: that renderer's ViewArea is centered on the player, and it can't render sections outside of it.
+     * Not with Sodium (its renderer is not bound to a fixed grid).
+     */
+    private static DimensionRenderHelper selectRenderHelper(ClientLevel destLevel, Vec3 cameraPos) {
+        DimensionRenderHelper helper = ClientWorldLoader.getDimensionRenderHelper(destLevel.dimension());
+        if (SodiumInterface.invoker.isSodiumPresent()) {
+            return helper;
+        }
+        if (RenderStates.originalPlayerDimension != destLevel.dimension()) {
+            return helper;
+        }
+        ViewArea viewArea = helper.levelRenderer.viewArea();
+        if (viewArea == null) {
+            return helper;
+        }
+        SectionPos center = viewArea.getCameraSectionPos();
+        SectionPos camera = SectionPos.of(cameraPos);
+        int maxOffset = Math.max(viewArea.getViewDistance() - FAR_VIEW_MIN_MARGIN_SECTIONS, 1);
+        if (Math.abs(camera.x() - center.x()) <= maxOffset && Math.abs(camera.z() - center.z()) <= maxOffset) {
+            return helper;
+        }
+        return helper.getOrCreateFarHelper();
+    }
+
     /**
      * @param replaceRotation if true, the view rotation is {@code node.cameraTransformation} alone,
      *                        otherwise the main camera's rotation times it
@@ -340,7 +373,7 @@ public class PortalViewRenderer {
 
         GameRenderer gameRenderer = client.gameRenderer;
         IEGameRenderer ieGameRenderer = (IEGameRenderer) gameRenderer;
-        DimensionRenderHelper renderHelper = ClientWorldLoader.getDimensionRenderHelper(destLevel.dimension());
+        DimensionRenderHelper renderHelper = selectRenderHelper(destLevel, node.cameraPos);
 
         // save the state that is switched
         ViewNode oldNode = currentNode;

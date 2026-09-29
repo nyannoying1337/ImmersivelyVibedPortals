@@ -6,6 +6,8 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.Lightmap;
 import net.minecraft.client.renderer.extract.LevelExtractor;
 import net.minecraft.server.packs.resources.ResourceManager;
+import org.jetbrains.annotations.Nullable;
+import qouteall.imm_ptl.core.ducks.IEClientWorld;
 import qouteall.imm_ptl.core.ducks.IECloudRenderer;
 import qouteall.imm_ptl.core.ducks.IEGameRenderer;
 import qouteall.imm_ptl.core.ducks.IEMinecraftClient;
@@ -33,6 +35,14 @@ public class DimensionRenderHelper {
     // true for the instances that vanilla created (Minecraft.levelRenderer etc. at initialization)
     public final boolean isVanillaOriginal;
 
+    // false for a far helper, which uses the lightmap of its dimension's helper
+    private final boolean ownsLightmap;
+
+    // see getOrCreateFarHelper
+    private @Nullable DimensionRenderHelper farHelper;
+    private long lastUsedFrame;
+    private static final int FAR_HELPER_IDLE_FRAMES = 600;
+
 
     // the frame index at which the lightmap was last rendered, see RenderStates.frameIndex
     public long lightmapRenderedFrame = -1;
@@ -41,11 +51,52 @@ public class DimensionRenderHelper {
         ClientLevel world, LevelRenderer levelRenderer, LevelExtractor levelExtractor,
         Lightmap lightmap, boolean isVanillaOriginal
     ) {
+        this(world, levelRenderer, levelExtractor, lightmap, isVanillaOriginal, true);
+    }
+
+    private DimensionRenderHelper(
+        ClientLevel world, LevelRenderer levelRenderer, LevelExtractor levelExtractor,
+        Lightmap lightmap, boolean isVanillaOriginal, boolean ownsLightmap
+    ) {
         this.world = world;
         this.levelRenderer = levelRenderer;
         this.levelExtractor = levelExtractor;
         this.lightmap = lightmap;
         this.isVanillaOriginal = isVanillaOriginal;
+        this.ownsLightmap = ownsLightmap;
+    }
+
+    /**
+     * A second renderer/extractor of this dimension, for portal views far away from where this helper's
+     * ViewArea (a fixed grid of the render distance) is. The renderer of the player's dimension is centered on the
+     * player, so without it a portal to a far-away place of the same dimension shows nothing.
+     * It renders the same ClientLevel (which forwards block changes to it, see IEClientWorld.ip_setExtraExtractor)
+     * and is released when it's not used for a while.
+     */
+    public DimensionRenderHelper getOrCreateFarHelper() {
+        if (farHelper == null) {
+            Pending pending = createNew();
+            setExtractorLevel(pending.levelRenderer(), pending.levelExtractor(), world);
+            ResourceManager resourceManager = client.getResourceManager();
+            pending.levelExtractor().onResourceManagerReload(resourceManager);
+            ((IECloudRenderer) pending.levelRenderer().cloudRenderer()).ip_reloadNow(resourceManager);
+            farHelper = new DimensionRenderHelper(
+                world, pending.levelRenderer(), pending.levelExtractor(), lightmap, false, false
+            );
+            ((IEClientWorld) world).ip_setExtraExtractor(farHelper.levelExtractor);
+            Helper.log("Created far view renderer for " + world.dimension().identifier());
+        }
+        farHelper.lastUsedFrame = RenderStates.frameIndex;
+        return farHelper;
+    }
+
+    private void releaseFarHelper() {
+        if (farHelper != null) {
+            ((IEClientWorld) world).ip_setExtraExtractor(null);
+            farHelper.cleanUp();
+            farHelper = null;
+            Helper.log("Released far view renderer for " + world.dimension().identifier());
+        }
     }
 
     /**
@@ -129,11 +180,22 @@ public class DimensionRenderHelper {
         if (!isCurrent()) {
             levelRenderer.resize(width, height);
         }
+        if (farHelper != null) {
+            farHelper.onResize(width, height);
+        }
     }
     
     public void onEndFrame() {
         if (!isCurrent()) {
             levelRenderer.endFrame();
+        }
+        if (farHelper != null) {
+            if (RenderStates.frameIndex - farHelper.lastUsedFrame > FAR_HELPER_IDLE_FRAMES) {
+                releaseFarHelper();
+            }
+            else {
+                farHelper.onEndFrame();
+            }
         }
     }
     
@@ -141,6 +203,18 @@ public class DimensionRenderHelper {
     public void onResourceReload(ResourceManager resourceManager) {
         levelExtractor.onResourceManagerReload(resourceManager);
         ((IECloudRenderer) levelRenderer.cloudRenderer()).ip_reloadNow(resourceManager);
+        if (farHelper != null) {
+            farHelper.onResourceReload(resourceManager);
+        }
+    }
+
+    public void onAllChanged() {
+        if (!isCurrent()) {
+            levelExtractor.allChanged();
+        }
+        if (farHelper != null) {
+            farHelper.levelExtractor.allChanged();
+        }
     }
     
     /**
@@ -148,10 +222,13 @@ public class DimensionRenderHelper {
      * (see ClientWorldLoader.cleanUp), so that vanilla keeps using its own objects for the next level.
      */
     public void cleanUp() {
+        releaseFarHelper();
         if (!isVanillaOriginal) {
             setExtractorLevel(levelRenderer, levelExtractor, null);
             levelRenderer.close();
-            lightmap.close();
+            if (ownsLightmap) {
+                lightmap.close();
+            }
         }
     }
 }

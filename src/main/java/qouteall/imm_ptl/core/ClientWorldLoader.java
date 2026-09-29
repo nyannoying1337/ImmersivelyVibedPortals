@@ -453,9 +453,7 @@ public class ClientWorldLoader {
         }
 
         for (DimensionRenderHelper helper : RENDER_HELPER_MAP.values()) {
-            if (!helper.isCurrent()) {
-                helper.levelExtractor.allChanged();
-            }
+            helper.onAllChanged();
         }
     }
 

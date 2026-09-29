@@ -182,6 +182,7 @@ public class PortalVisualTest implements FabricClientGameTest {
             shootGlobalPortalAndMirror(ctx, sp, srv);
             shootClouds(ctx, sp, srv);
             shootEntityClipping(ctx, srv);
+            shootFarPortal(ctx, sp, srv);
 
             // walk through the plane with teleportation enabled
             ctx.runOnClient(mc -> IPGlobal.disableTeleportation = false);
@@ -326,6 +327,50 @@ public class PortalVisualTest implements FabricClientGameTest {
                 .getEntitiesOfClass(Entity.class, new AABB(-2, -62, 38, 4, -55, 45), e -> e.entityTags().contains("immptl_test"))
                 .forEach(Entity::discard);
         });
+    }
+
+    /**
+     * Portal to a far-away place of the same dimension: nether x=-5, opening z 2.5..5.5, y 65..68, facing +X,
+     * to nether (1000.5, 66.5, 4.0), far beyond the render distance. There is a room with a yellow concrete wall
+     * at x=994. Looking -X through it (far_portal): the yellow wall and the netherrack floor.
+     * Nether fog or sky only means the far sections of the player's dimension are not rendered in the view.
+     * Then the middle of the wall is replaced by lime concrete (far_portal_changed): the view must show it
+     * (block changes reach the far view renderer).
+     */
+    void shootFarPortal(ClientGameTestContext ctx, TestSingleplayerContext sp, TestServerContext srv) {
+        for (String c : List.of(
+            "forceload add 988 -8 1008 16",
+            "fill 990 60 -6 1006 80 14 minecraft:air",
+            "fill 990 63 -6 1006 63 14 minecraft:netherrack",
+            "fill 994 64 -6 994 78 14 minecraft:yellow_concrete"
+        )) {
+            srv.runCommand(NETHER + c);
+        }
+        srv.runOnServer(s -> {
+            Portal p = Portal.ENTITY_TYPE.create(s.getLevel(Level.NETHER), EntitySpawnReason.COMMAND);
+            p.setOriginPos(new Vec3(-5.0, 66.5, 4.0));
+            p.setOrientationAndSize(new Vec3(0, 0, -1), new Vec3(0, 1, 0), 3, 3);
+            p.setDestinationDimension(Level.NETHER);
+            p.setDestination(new Vec3(1000.5, 66.5, 4.0));
+            McHelper.spawnServerEntity(p);
+        });
+        srv.runCommand(NETHER + "tp Player0 -1.0 65.0 4.0 90.0 0.0");
+        // the destination chunks are sent by ImmPtl's chunk loading
+        ctx.waitFor(mc -> {
+            ClientLevel w = ClientWorldLoader.getOptionalWorld(Level.NETHER);
+            return w != null && w.getChunkSource().hasChunk(1000 >> 4, 4 >> 4);
+        }, 1200);
+        ctx.waitTicks(100);
+        shoot(ctx, srv, new Pose("far_portal", -1.0, 65.0, 4.0, 90, 0));
+        srv.runCommand(NETHER + "fill 994 66 2 994 69 6 minecraft:lime_concrete");
+        ctx.waitTicks(20);
+        shoot(ctx, srv, new Pose("far_portal_changed", -1.0, 65.0, 4.0, 90, 0));
+
+        srv.runOnServer(s -> s.getLevel(Level.NETHER)
+            .getEntitiesOfClass(Portal.class, new AABB(-6, 60, 1, -4, 72, 7))
+            .forEach(Entity::discard));
+        srv.runCommand(NETHER + "forceload remove 988 -8 1008 16");
+        ctx.waitTicks(10);
     }
 
     static void waitIdle(ClientGameTestContext ctx) {

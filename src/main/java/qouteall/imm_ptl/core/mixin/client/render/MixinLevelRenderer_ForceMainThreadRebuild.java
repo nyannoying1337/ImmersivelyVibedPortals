@@ -22,10 +22,32 @@ public class MixinLevelRenderer_ForceMainThreadRebuild {
     private void wrapCompileAsync(
         SectionRenderDispatcher.RenderSection section, RenderSectionRegion region, Operation<Void> original
     ) {
+        // A portal view of another dimension collects the dirty sections around its camera, but the ViewArea grid
+        // may be centered elsewhere (MixinLevelRenderer.ip_repositionForPortalViews), then the section is not in
+        // the grid. It is reset (and compiled) when the grid moves over it.
+        if (section == null) {
+            return;
+        }
         if (ForceMainThreadRebuild.isCurrentFrameForceMainThreadRebuild()) {
             section.compileSync(region);
         }
         else {
+            original.call(section, region);
+        }
+    }
+
+    @WrapOperation(
+        method = "compileSections",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSection;compileSync(Lnet/minecraft/client/renderer/chunk/RenderSectionRegion;)V"
+        )
+    )
+    private void wrapCompileSync(
+        SectionRenderDispatcher.RenderSection section, RenderSectionRegion region, Operation<Void> original
+    ) {
+        // see wrapCompileAsync
+        if (section != null) {
             original.call(section, region);
         }
     }

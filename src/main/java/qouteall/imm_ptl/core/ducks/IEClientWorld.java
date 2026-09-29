@@ -27,4 +27,10 @@ public interface IEClientWorld {
     BlockStatePredictionHandler ip_getBlockStatePredictionHandler();
     
     void ip_setTickRateManager(TickRateManager cond);
+    
+    /**
+     * A second extractor of this level (far portal views, see DimensionRenderHelper.getOrCreateFarHelper)
+     * that also gets the block/section change notifications.
+     */
+    void ip_setExtraExtractor(@Nullable net.minecraft.client.renderer.extract.LevelExtractor extractor);
 }

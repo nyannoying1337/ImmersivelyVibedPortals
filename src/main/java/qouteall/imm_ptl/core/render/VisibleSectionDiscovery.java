@@ -46,13 +46,11 @@ import java.util.List;
  * The hook: during a portal view, {@link LevelRenderer#sectionOcclusionGraph()} returns a {@link PortalViewOcclusionGraph}
  * (see MixinLevelRenderer), so the vanilla {@code LevelExtractor.applyFrustum} fills the view's section lists using this.
  * <p>
- * Limitation: the vanilla {@link ViewArea} is a fixed grid (render distance radius) around its LevelRenderer's camera.
- * For a portal view of the main view's dimension that grid stays centered on the main camera,
- * so only the sections within the main view's render distance can be rendered in that view.
- * (1.21.1 used ImmPtlViewArea, a hash-map based ViewArea, to avoid that. 26.3 has no ViewArea replacement point:
- * the ViewArea's RotatingSectionStorage indexes are used by SectionOcclusionGraph's arrays.)
- * TODO(26.3): render far-away sections of the same dimension in portal views (e.g. a second ViewArea +
- * SectionRenderDispatcher for such views, or a dedicated LevelRenderer per far-away portal view).
+ * The vanilla {@link ViewArea} is a fixed grid (render distance radius) around its LevelRenderer's camera.
+ * For a portal view of the main view's dimension that grid stays centered on the main camera, so a view far
+ * away from the player uses a second renderer of that dimension (DimensionRenderHelper.getOrCreateFarHelper,
+ * chosen in PortalViewRenderer.selectRenderHelper). (1.21.1 used ImmPtlViewArea, a hash-map based ViewArea.
+ * 26.3 has no ViewArea replacement point: the RotatingSectionStorage indexes are used by SectionOcclusionGraph.)
  */
 @Environment(EnvType.CLIENT)
 public class VisibleSectionDiscovery {

@@ -80,6 +80,16 @@ around a center) is centered once per frame on the middle of the last frame's vi
 camera: re-centering resets the sections that move in the grid, so several views of different places would reset
 and recompile the grid edges every view. A view too near the grid edge gets its own center. Its occlusion graph is
 not updated in views (views use `VisibleSectionDiscovery`); it's rebuilt when that renderer becomes the main one.
+The dirty sections of a view are collected around its camera, so some may be outside the grid then; they're skipped
+when compiling (`MixinLevelRenderer_ForceMainThreadRebuild`) and reset/compiled when the grid moves over them.
+
+### Far views of the player's dimension
+The main view's renderer stays centered on the player, so a portal to a far place of the same dimension
+(beyond the render distance) would show nothing. Such views (camera less than 4 sections from the edge of the main
+grid) use a second renderer of the dimension (`DimensionRenderHelper.getOrCreateFarHelper`): its own LevelRenderer
+and LevelExtractor bound to the same ClientLevel, which forwards block changes to it (`IEClientWorld.ip_setExtraExtractor`).
+It shares the dimension's lightmap and is released after 600 frames without use. Not with Sodium, whose renderer is
+not bound to a grid. Visual test: `far_portal`, `far_portal_changed`.
 
 ### Per-view buffer instances
 - Fog: `GameRenderer.fogRenderer` is swapped to a pooled `FogRenderer` per view index; call `endFrame()` on all pooled instances each frame.

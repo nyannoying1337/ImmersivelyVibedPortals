@@ -19,6 +19,8 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -88,6 +90,52 @@ public abstract class MixinClientLevel implements IEClientWorld {
     @Override
     public void ip_setGlobalPortals(List<Portal> arg) {
         portal_globalPortals = arg;
+    }
+    
+    @Unique
+    private @Nullable LevelExtractor ip_extraExtractor;
+    
+    @Override
+    public void ip_setExtraExtractor(@Nullable LevelExtractor extractor) {
+        ip_extraExtractor = extractor;
+    }
+    
+    // the level only notifies its own extractor; also notify the far view extractor of this level
+    @Inject(method = "sendBlockUpdated", at = @At("TAIL"))
+    private void onSendBlockUpdated(
+        net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState old,
+        net.minecraft.world.level.block.state.BlockState current, int updateFlags, CallbackInfo ci
+    ) {
+        if (ip_extraExtractor != null) {
+            ip_extraExtractor.blockChanged(pos, updateFlags);
+        }
+    }
+    
+    @Inject(method = "setBlocksDirty", at = @At("TAIL"))
+    private void onSetBlocksDirty(
+        net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState oldState,
+        net.minecraft.world.level.block.state.BlockState newState, CallbackInfo ci
+    ) {
+        if (ip_extraExtractor != null) {
+            ip_extraExtractor.setBlockDirty(pos, oldState, newState);
+        }
+    }
+    
+    @Inject(method = "setSectionDirtyWithNeighbors", at = @At("TAIL"))
+    private void onSetSectionDirtyWithNeighbors(int chunkX, int chunkY, int chunkZ, CallbackInfo ci) {
+        if (ip_extraExtractor != null) {
+            ip_extraExtractor.setSectionDirtyWithNeighbors(chunkX, chunkY, chunkZ);
+        }
+    }
+    
+    @Inject(method = "setSectionRangeDirty", at = @At("TAIL"))
+    private void onSetSectionRangeDirty(
+        int minSectionX, int minSectionY, int minSectionZ, int maxSectionX, int maxSectionY, int maxSectionZ,
+        CallbackInfo ci
+    ) {
+        if (ip_extraExtractor != null) {
+            ip_extraExtractor.setSectionRangeDirty(minSectionX, minSectionY, minSectionZ, maxSectionX, maxSectionY, maxSectionZ);
+        }
     }
     
     //use my client chunk manager
