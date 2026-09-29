@@ -94,7 +94,7 @@ public class PortalVisualTest implements FabricClientGameTest {
             ctx.runOnClient(mc -> IrisTestPack.enable());
         }
         ctx.waitForScreen(TitleScreen.class);
-        // -Dimm_ptl.visualTest.skip=true runs only the other tests (after the setup above,
+        // gradle -Pimm_ptl.visualTest.skip=true runs only the other tests (after the setup above,
         // so that the test still ends on the title screen)
         if (Boolean.getBoolean("imm_ptl.visualTest.skip")) {
             return;

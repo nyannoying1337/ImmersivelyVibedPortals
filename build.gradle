@@ -60,6 +60,13 @@ loom {
             property "imm_ptl.visualTest.shaders", withShaders.toString()
             property "imm_ptl.visualTest.shaderpack", shaderPackFile != null ? shaderPackFile.absolutePath : ""
             property "imm_ptl.featureTest.out", file("build/feature-test").absolutePath
+            // -Pimm_ptl.<...>=<...> on the gradle command line (e.g. -Pimm_ptl.featureTest.skip=true) is passed to the
+            // game as a system property. (Not -D: the gradle daemon keeps those for later builds.)
+            project.properties.each { k, v ->
+                if (k.toString().startsWith("imm_ptl.")) {
+                    property k.toString(), v.toString()
+                }
+            }
             // -Pperf: run the portal rendering benchmark (PerfBenchmark) and append to build/perf/results.csv
             property "imm_ptl.perf", providers.gradleProperty("perf").isPresent().toString()
             property "imm_ptl.perf.out", file("build/perf").absolutePath

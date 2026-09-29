@@ -112,7 +112,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
 
         // Multiplayer: a local dedicated server in the test's run directory (build/run/clientGameTest).
         // It needs eula=true in its eula.txt (the Minecraft EULA; the project owner accepted it for this
-        // test server). Disable with -Dimm_ptl.featureTest.dedicated=false.
+        // test server). Disable with gradle -Pimm_ptl.featureTest.dedicated=false.
         if (!"false".equals(System.getProperty("imm_ptl.featureTest.dedicated"))) section("dedicated server", () -> {
             try {
                 Files.writeString(Path.of("eula.txt"), "eula=true\n");

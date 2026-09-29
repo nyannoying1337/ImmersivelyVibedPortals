@@ -10,6 +10,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ChunkHolder;
+import net.minecraft.server.level.ChunkLevel;
+import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ChunkResult;
 import net.minecraft.server.level.ChunkTaskPriorityQueue;
@@ -211,6 +213,12 @@ public class ImmPtlChunkTickets {
             }
 
             if (!resultNow.isSuccess()) {
+                // Right after the ticket is added, the holder still has the failed future of its old level
+                // (the ticket level is applied by the next distance manager update). Keep waiting until its level
+                // makes it a full chunk; only a failure after that is real.
+                if (!ChunkLevel.fullStatus(chunkHolder.getTicketLevel()).isOrAfter(FullChunkStatus.FULL)) {
+                    return false;
+                }
                 LOGGER.error(
                     "Chunk loading failure {} {}",
                     world, ChunkPos.unpack(chunkPos)

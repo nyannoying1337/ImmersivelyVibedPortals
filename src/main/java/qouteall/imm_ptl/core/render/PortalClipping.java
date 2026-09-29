@@ -163,6 +163,25 @@ public class PortalClipping {
         );
     }
 
+    // the vanilla Projection block as Iris' fallback shaders (ShaderSynthesizer) declare it
+    private static final Pattern IRIS_FALLBACK_PROJECTION_BLOCK_PATTERN =
+        Pattern.compile("(uniform\\s+Projection\\s*\\{\\s*mat4\\s+ProjMat\\s*;)");
+
+    /**
+     * Like {@link #transformIrisVanillaProgram}, for the programs Iris synthesizes when a shaderpack has no program
+     * for a render type (Iris' ShaderSynthesizer: vanilla uniform names, {@code Position + ModelOffset}).
+     */
+    public static @Nullable java.util.Map<String, String> transformIrisFallbackProgram(java.util.Map<String, String> sources) {
+        String vertex = sources.get("VERTEX");
+        if (vertex == null || !vertex.contains("ModelViewMat") || !vertex.contains("ModelOffset")) {
+            return null;
+        }
+        return transformIrisProgram(
+            sources, IRIS_FALLBACK_PROJECTION_BLOCK_PATTERN,
+            "ModelViewMat * vec4(Position + ModelOffset, 1.0)"
+        );
+    }
+
     /**
      * @param blockFieldPattern matches the last field of the uniform block that the plane is appended to
      *                          (group 1 is kept)

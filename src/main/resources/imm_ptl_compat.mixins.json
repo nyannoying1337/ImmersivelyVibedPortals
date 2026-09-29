@@ -8,7 +8,8 @@
     "sodium.MixinSodiumGlobalUniforms",
     "sodium.MixinSodiumRenderSectionManager",
     "sodium.MixinSodiumWorldRenderer",
-    "iris.MixinIrisTransformPatcher"
+    "iris.MixinIrisTransformPatcher",
+    "iris.MixinIrisShaderCreator"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -32,7 +32,14 @@ public class IrisTestPack {
         }
         Path dir = Iris.getShaderpacksDirectory().resolve(NAME);
         try {
+            // gradle -Pimm_ptl.visualTest.packFallback=true: without gbuffers_textured_lit, so entities etc. use Iris'
+            // fallback programs
+            boolean fallback = Boolean.getBoolean("imm_ptl.visualTest.packFallback");
             for (String file : FILES) {
+                if (fallback && file.contains("gbuffers_textured_lit")) {
+                    Files.deleteIfExists(dir.resolve(file));
+                    continue;
+                }
                 Path target = dir.resolve(file);
                 Files.createDirectories(target.getParent());
                 try (InputStream in = IrisTestPack.class.getResourceAsStream("/immptl_test_shaderpack/" + file)) {
