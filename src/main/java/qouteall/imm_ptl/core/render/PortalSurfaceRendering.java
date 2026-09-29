@@ -47,6 +47,8 @@ public class PortalSurfaceRendering {
         .withLocation(Identifier.fromNamespaceAndPath("immersive_portals", path))
         .withBindGroupLayout(BindGroupLayouts.PROJECTION)
         .withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
+        // the surface is fogged like terrain (lava/water fog, far away portals), see portal_view.fsh
+        .withBindGroupLayout(BindGroupLayouts.FOG)
         .withVertexShader(Identifier.fromNamespaceAndPath("immersive_portals", "core/portal_view"))
         .withFragmentShader(Identifier.fromNamespaceAndPath("immersive_portals", "core/portal_view"))
         .withBindGroupLayout(BindGroupLayouts.SAMPLER0)

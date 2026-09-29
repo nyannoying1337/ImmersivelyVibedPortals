@@ -637,8 +637,20 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             {"dim_stack_horizontal_high", "0 250 0 0 0"},
             {"dim_stack_down_bottom", "0 -58 0 0 70"},
             {"dim_stack_level_over_floor", "0 -62 0 0 0"},
+            // the world-sized floor portal must not show the nether beyond the render distance
+            {"dim_stack_horizon", "0 150 0 0 8"},
+            // in lava under the nether's ceiling portal: the portal must be in the lava fog too
+            {"dim_stack_nether_lava_up", "in minecraft:the_nether 0 119 0 0 -60"},
         }) {
-            runIntegratedServerCommand(ctx, "tp @p " + pose[1]);
+            if (pose[1].startsWith("in ")) {
+                runIntegratedServerCommand(ctx, "execute in minecraft:the_nether run fill -3 115 -3 3 121 3 minecraft:lava");
+                runIntegratedServerCommand(ctx, "execute in minecraft:the_nether run fill -3 122 -3 3 127 3 minecraft:air");
+                String[] parts = pose[1].split(" ", 3);
+                runIntegratedServerCommand(ctx, "execute in " + parts[1] + " run tp @p " + parts[2]);
+            }
+            else {
+                runIntegratedServerCommand(ctx, "execute in minecraft:overworld run tp @p " + pose[1]);
+            }
             ctx.runOnClient(mc -> {
                 mc.player.getAbilities().flying = true;
                 mc.player.onUpdateAbilities();
