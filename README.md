@@ -15,7 +15,7 @@ to **Minecraft 26.3 (Fabric)**. The original project stopped at Minecraft 1.21.1
 - DimLib and Cloth Config are bundled
 
 ### Known issues / not ported yet
-- Sodium and Iris work. Shaderpacks are experimental: only tested with a minimal test pack so far
+- Sodium and Iris work. Shaderpacks are experimental: tested with Complementary Reimagined r5.9.3 and BSL v10.1.8 in the automated visual test, not in real gameplay yet
 - Leashes and name tags of entities crossing a portal are not cut at the portal plane
 - Tested on the OpenGL and Vulkan backends with an automated visual test (`./gradlew runClientGameTest`)
 

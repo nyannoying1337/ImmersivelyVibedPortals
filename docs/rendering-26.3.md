@@ -162,3 +162,5 @@ Shadow, sky and hand programs are left alone. Programs missing from the pack use
 not clipped. The test pack has `gbuffers_textured_lit` (entities fall back to it) for the `entity_front_ow` shot.
 Run the visual test with the test shaderpack (`src/gametest/resources/immptl_test_shaderpack`, magenta border):
 `./gradlew runClientGameTest -PwithShaders` (OpenGL only; Iris crashes when Vulkan is forced).
+With a real pack: `-PshaderPack=<path to the zip>` (output in build/visual-test/opengl-pack-<name>).
+Checked this way: Complementary Reimagined r5.9.3, BSL v10.1.8.

@@ -11,7 +11,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 /**
- * Installs and enables the test shaderpack (src/gametest/resources/immptl_test_shaderpack).
+ * Installs and enables the test shaderpack (src/gametest/resources/immptl_test_shaderpack),
+ * or the shaderpack zip given by -Dimm_ptl.visualTest.shaderpack (gradle -PshaderPack=...).
  * Only loaded when Iris is present.
  */
 public class IrisTestPack {
@@ -24,6 +25,11 @@ public class IrisTestPack {
     );
     
     static void enable() {
+        String packZip = System.getProperty("imm_ptl.visualTest.shaderpack", "");
+        if (!packZip.isEmpty()) {
+            enablePackZip(Path.of(packZip));
+            return;
+        }
         Path dir = Iris.getShaderpacksDirectory().resolve(NAME);
         try {
             for (String file : FILES) {
@@ -33,13 +39,31 @@ public class IrisTestPack {
                     Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
-            Iris.getIrisConfig().setShaderPackName(NAME);
-            Iris.getIrisConfig().setShadersEnabled(true);
-            Iris.getIrisConfig().save();
-            Iris.reload();
+            select(NAME);
         }
         catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private static void enablePackZip(Path zip) {
+        try {
+            Files.createDirectories(Iris.getShaderpacksDirectory());
+            Files.copy(
+                zip, Iris.getShaderpacksDirectory().resolve(zip.getFileName().toString()),
+                StandardCopyOption.REPLACE_EXISTING
+            );
+            select(zip.getFileName().toString());
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static void select(String packName) throws IOException {
+        Iris.getIrisConfig().setShaderPackName(packName);
+        Iris.getIrisConfig().setShadersEnabled(true);
+        Iris.getIrisConfig().save();
+        Iris.reload();
     }
 }

@@ -49,18 +49,22 @@ fabricApi {
     }
 }
 def ipBackend = providers.gradleProperty("ipBackend").getOrElse("opengl")
+// -PshaderPack=<path to a shaderpack zip>: like -PwithShaders, with that pack instead of the test pack
+def shaderPackFile = providers.gradleProperty("shaderPack").isPresent() ? file(providers.gradleProperty("shaderPack").get()) : null
+def withShaders = providers.gradleProperty("withShaders").isPresent() || shaderPackFile != null
 loom {
     runs {
         clientGameTest {
             programArgs "--graphicsBackend", ipBackend, "--width", "1280", "--height", "720"
             // -PwithShaders: Iris with the test shaderpack (src/gametest/resources/immptl_test_shaderpack)
-            property "imm_ptl.visualTest.shaders", providers.gradleProperty("withShaders").isPresent().toString()
+            property "imm_ptl.visualTest.shaders", withShaders.toString()
+            property "imm_ptl.visualTest.shaderpack", shaderPackFile != null ? shaderPackFile.absolutePath : ""
             property "imm_ptl.featureTest.out", file("build/feature-test").absolutePath
             // -Pperf: run the portal rendering benchmark (PerfBenchmark) and append to build/perf/results.csv
             property "imm_ptl.perf", providers.gradleProperty("perf").isPresent().toString()
             property "imm_ptl.perf.out", file("build/perf").absolutePath
             property "imm_ptl.perf.label", ipBackend + (providers.gradleProperty("withSodium").isPresent() ? "-sodium" : "") + (providers.gradleProperty("perfLabel").isPresent() ? "-" + providers.gradleProperty("perfLabel").get() : "")
-            property "imm_ptl.visualTest.out", file("build/visual-test/" + ipBackend + (providers.gradleProperty("withShaders").isPresent() ? "-shaders" : providers.gradleProperty("withIris").isPresent() ? "-iris" : providers.gradleProperty("withSodium").isPresent() ? "-sodium" : "")).absolutePath
+            property "imm_ptl.visualTest.out", file("build/visual-test/" + ipBackend + (shaderPackFile != null ? "-pack-" + shaderPackFile.name.replaceAll(/\.zip$/, "") : withShaders ? "-shaders" : providers.gradleProperty("withIris").isPresent() ? "-iris" : providers.gradleProperty("withSodium").isPresent() ? "-sodium" : "")).absolutePath
         }
     }
 }
@@ -98,11 +102,11 @@ dependencies {
     compileOnly "maven.modrinth:sodium:${sodium_version}"
     compileOnly "maven.modrinth:iris:${iris_version}"
     gametestCompileOnly "maven.modrinth:iris:${iris_version}"
-    if (providers.gradleProperty("withSodium").isPresent() || providers.gradleProperty("withIris").isPresent() || providers.gradleProperty("withShaders").isPresent()) {
+    if (providers.gradleProperty("withSodium").isPresent() || providers.gradleProperty("withIris").isPresent() || withShaders) {
         localRuntime "maven.modrinth:sodium:${sodium_version}"
     }
     // Iris compatibility: in dev, run with it via -PwithIris (implies Sodium)
-    if (providers.gradleProperty("withIris").isPresent() || providers.gradleProperty("withShaders").isPresent()) {
+    if (providers.gradleProperty("withIris").isPresent() || withShaders) {
         localRuntime "maven.modrinth:iris:${iris_version}"
     }
 
