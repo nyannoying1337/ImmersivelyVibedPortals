@@ -101,6 +101,11 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             section("world wrapping", () -> worldWrapping(ctx, srv));
             section("dimension stack", () -> dimensionStack(ctx, srv));
             section("rotating portal", () -> rotatingPortal(ctx, srv));
+            section("command stick", () -> commandStick(ctx, srv));
+            section("strip clipping (leashes)", this::stripClipping);
+            section("breakable mirror", () -> breakableMirror(ctx, srv));
+            section("portal helper", () -> portalHelper(ctx, srv));
+            section("portal wand", () -> portalWand(ctx, srv));
 
             // global portals for the migration check below
             srv.runCommand("portal global create_inward_wrapping -40 -40 40 40");
@@ -108,6 +113,8 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             migrationPortalCount = srv.computeOnServer(s -> GlobalPortalStorage.getGlobalPortals(s.overworld()).size());
             worldSave = sp.getWorldSave();
         }
+        // loaded when the world is opened again (dynamic registries are only loaded with the world)
+        writeTestDatapack();
 
         section("migration of old global portal files", () -> migration(ctx));
 
@@ -460,6 +467,8 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             boolean synced = waitFor(ctx, 200, () -> ctx.computeOnClient(mc ->
                 GlobalPortalStorage.getGlobalPortals(mc.level).size() == count));
             check("migration: the migrated portals are synced to the client", synced, "");
+
+            section("custom portal generation (datapack)", () -> customPortalGeneration(ctx, srv));
         }
     }
 
@@ -515,6 +524,286 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         check("rotating portal: the camera turns upright after the animation", upLater > 0.99,
             String.format(Locale.ROOT, "camera up.y %.3f", upLater));
         screenshot(ctx, "rotating_portal_later");
+    }
+
+    private static ServerPlayer serverPlayer(net.minecraft.server.MinecraftServer s) {
+        return s.getPlayerList().getPlayers().get(0);
+    }
+
+    // uses an item on a block face like a player (server side, with the player's main hand)
+    private static void useItemOn(TestServerContext srv, ItemStack stack, BlockPos pos, Direction face) {
+        srv.runOnServer(s -> {
+            ServerPlayer p = serverPlayer(s);
+            p.setItemInHand(InteractionHand.MAIN_HAND, stack);
+            Vec3 hit = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(0.5));
+            p.getMainHandItem().useOn(new UseOnContext(p, InteractionHand.MAIN_HAND,
+                new BlockHitResult(hit, face, pos, false)));
+        });
+    }
+
+    // saves the main render target as it is after the last normal frame (with the gizmos of that frame)
+    private void grabLastFrame(ClientGameTestContext ctx, String name) {
+        Path file = out.resolve(name + ".png");
+        java.util.concurrent.CompletableFuture<Void> done = new java.util.concurrent.CompletableFuture<>();
+        ctx.runOnClient(mc -> net.minecraft.client.Screenshot.takeScreenshot(mc.gameRenderer.mainRenderTarget(), image -> {
+            try (image) {
+                image.writeToFile(file);
+                done.complete(null);
+            }
+            catch (IOException e) {
+                done.completeExceptionally(e);
+            }
+        }));
+        ctx.waitFor(mc -> done.isDone(), 100);
+    }
+
+    private static int countPortals(TestServerContext srv, ResourceKey<Level> dim, AABB box) {
+        return srv.computeOnServer(s -> s.getLevel(dim).getEntitiesOfClass(Portal.class, box).size());
+    }
+
+    // a vertical frame in the plane z=frameZ, inner area 2 wide x 3 high, bottom frame row at y
+    private static void buildFrame(TestServerContext srv, int x0, int y, int frameZ, String block) {
+        srv.runCommand(String.format(Locale.ROOT, "fill %d %d %d %d %d %d %s", x0, y, frameZ, x0 + 3, y + 4, frameZ, block));
+        srv.runCommand(String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:air", x0 + 1, y + 1, frameZ, x0 + 2, y + 3, frameZ));
+    }
+
+    /**
+     * Leashes are triangle strips; EntityClipping cuts every triangle of a strip at the portal plane and joins the
+     * rest with degenerate triangles. A strip along X from x=-1 to x=1, clipped by the plane x >= 0:
+     * no triangle may reach x < 0, and the kept area must be the half of the strip.
+     */
+    private void stripClipping() {
+        List<float[]> out = new ArrayList<>();
+        com.mojang.blaze3d.vertex.VertexConsumer recorder = new com.mojang.blaze3d.vertex.VertexConsumer() {
+            @Override public com.mojang.blaze3d.vertex.VertexConsumer addVertex(float x, float y, float z) { out.add(new float[]{x, y, z}); return this; }
+            @Override public com.mojang.blaze3d.vertex.VertexConsumer setColor(int r, int g, int b, int a) { return this; }
+            @Override public com.mojang.blaze3d.vertex.VertexConsumer setColor(int color) { return this; }
+            @Override public com.mojang.blaze3d.vertex.VertexConsumer setUv(float u, float v) { return this; }
+            @Override public com.mojang.blaze3d.vertex.VertexConsumer setUv1(int u, int v) { return this; }
+            @Override public com.mojang.blaze3d.vertex.VertexConsumer setUv2(int u, int v) { return this; }
+            @Override public com.mojang.blaze3d.vertex.VertexConsumer setUv3(float u, float v) { return this; }
+            @Override public com.mojang.blaze3d.vertex.VertexConsumer setNormal(float x, float y, float z) { return this; }
+            @Override public com.mojang.blaze3d.vertex.VertexConsumer setLineWidth(float width) { return this; }
+        };
+        var consumer = new qouteall.imm_ptl.core.render.EntityClipping.ClippingVertexConsumer(
+            recorder, new float[]{1, 0, 0, 0}, true
+        );
+        // 8 segments like a leash: pairs of vertices at y=0 and y=0.1
+        for (int k = 0; k <= 8; k++) {
+            float x = -1 + k * 0.25f;
+            consumer.addVertex(x, 0, 0).setColor(0xFFFFFFFF);
+            consumer.addVertex(x, 0.1f, 0).setColor(0xFFFFFFFF);
+        }
+        consumer.flush();
+
+        float minX = Float.MAX_VALUE;
+        for (float[] v : out) {
+            minX = Math.min(minX, v[0]);
+        }
+        // area of the strip's triangles (degenerate ones add nothing)
+        double area = 0;
+        for (int i = 0; i + 2 < out.size(); i++) {
+            float[] a = out.get(i), b = out.get(i + 1), c = out.get(i + 2);
+            double ux = b[0] - a[0], uy = b[1] - a[1], vx = c[0] - a[0], vy = c[1] - a[1];
+            area += Math.abs(ux * vy - uy * vx) / 2;
+        }
+        check("strip clipping: nothing is left behind the plane", !out.isEmpty() && minX > -1e-4,
+            "vertices " + out.size() + ", min x " + minX);
+        check("strip clipping: the part in front of the plane is kept", Math.abs(area - 0.1) < 1e-3,
+            String.format(Locale.ROOT, "area %.4f, expected 0.1000", area));
+    }
+
+    /**
+     * Command stick: using it runs its command (server side, like a right click).
+     */
+    private void commandStick(ClientGameTestContext ctx, TestServerContext srv) {
+        int y = groundY(srv, Level.OVERWORLD, 600, 600);
+        check("command stick: built-in command sticks are registered",
+            !qouteall.imm_ptl.peripheral.CommandStickItem.BUILT_IN_COMMAND_STICK_TYPES.isEmpty(), "");
+        srv.runOnServer(s -> {
+            ServerPlayer p = serverPlayer(s);
+            ItemStack stack = new ItemStack(qouteall.imm_ptl.peripheral.CommandStickItem.instance);
+            stack.set(qouteall.imm_ptl.peripheral.CommandStickItem.COMPONENT_TYPE, new qouteall.imm_ptl.peripheral.CommandStickItem.Data(
+                String.format(Locale.ROOT, "/setblock 600 %d 600 minecraft:gold_block", y + 2),
+                "imm_ptl.command.test", List.of()
+            ));
+            p.setItemInHand(InteractionHand.MAIN_HAND, stack);
+            qouteall.imm_ptl.peripheral.CommandStickItem.instance.use(p.level(), p, InteractionHand.MAIN_HAND);
+        });
+        ctx.waitTicks(5);
+        boolean placed = srv.computeOnServer(s ->
+            s.overworld().getBlockState(new BlockPos(600, y + 2, 600)).is(Blocks.GOLD_BLOCK));
+        check("command stick: using it runs its command", placed, "");
+        // the item name comes from the stick's data (client side)
+        String name = ctx.computeOnClient(mc -> mc.player.getMainHandItem().getHoverName().getString());
+        check("command stick: the client shows its name", name != null && !name.isEmpty(), "name '" + name + "'");
+        srv.runOnServer(s -> serverPlayer(s).setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY));
+    }
+
+    /**
+     * Flint and steel on a glass wall creates a mirror covering the wall.
+     */
+    private void breakableMirror(ClientGameTestContext ctx, TestServerContext srv) {
+        int y = groundY(srv, Level.OVERWORLD, 620, 630);
+        srv.runCommand(String.format(Locale.ROOT, "fill 620 %d 630 622 %d 630 minecraft:glass", y, y + 2));
+        srv.runCommand(String.format(Locale.ROOT, "tp Player0 621.5 %d 626.5 0 0", y));
+        ctx.waitTicks(10);
+        useItemOn(srv, new ItemStack(Items.FLINT_AND_STEEL), new BlockPos(621, y + 1, 630), Direction.NORTH);
+        ctx.waitTicks(10);
+        int mirrors = srv.computeOnServer(s -> s.overworld().getEntitiesOfClass(
+            qouteall.imm_ptl.core.portal.BreakableMirror.class, new AABB(618, y - 2, 628, 625, y + 5, 633)).size());
+        check("mirror: flint and steel on glass creates a mirror", mirrors >= 1, "mirrors " + mirrors);
+        ctx.waitTicks(20);
+        screenshot(ctx, "tools_mirror");
+    }
+
+    /**
+     * Two frames of portal helper blocks; flint and steel on one links them with portals.
+     */
+    private void portalHelper(ClientGameTestContext ctx, TestServerContext srv) {
+        int y = groundY(srv, Level.OVERWORLD, 640, 650);
+        String helper = "immersive_portals:portal_helper";
+        buildFrame(srv, 640, y, 650, helper);
+        buildFrame(srv, 660, y, 650, helper);
+        srv.runCommand(String.format(Locale.ROOT, "tp Player0 641.5 %d 646.5 0 0", y + 1));
+        ctx.waitTicks(10);
+        useItemOn(srv, new ItemStack(Items.FLINT_AND_STEEL), new BlockPos(641, y, 650), Direction.UP);
+        AABB box = new AABB(630, y - 5, 640, 675, y + 10, 660);
+        boolean created = waitFor(ctx, 200, () -> countPortals(srv, Level.OVERWORLD, box) >= 2);
+        check("portal helper: igniting a helper frame creates portals", created,
+            "portals " + countPortals(srv, Level.OVERWORLD, box));
+        ctx.waitTicks(20);
+        screenshot(ctx, "tools_portal_helper");
+    }
+
+    /**
+     * Portal wand, create mode: place the 3 corners of both sides through the client code
+     * (as the right clicks do), then the client sends the portal to the server.
+     * Then hold the wand in the other modes looking at the portal (their cursor update and rendering run).
+     */
+    private void portalWand(ClientGameTestContext ctx, TestServerContext srv) {
+        int y = groundY(srv, Level.OVERWORLD, 700, 700);
+        srv.runCommand(String.format(Locale.ROOT, "tp Player0 706.0 %d 694.0 0 0", y));
+        srv.runOnServer(s -> {
+            ItemStack wand = new ItemStack(qouteall.imm_ptl.peripheral.wand.PortalWandItem.instance);
+            wand.set(qouteall.imm_ptl.peripheral.wand.PortalWandItem.COMPONENT_TYPE, qouteall.imm_ptl.peripheral.wand.PortalWandItem.Mode.CREATE_PORTAL);
+            serverPlayer(s).setItemInHand(InteractionHand.MAIN_HAND, wand);
+        });
+        ctx.waitTicks(20);
+        Vec3[] corners = {
+            new Vec3(700, y + 1, 700), new Vec3(702, y + 1, 700), new Vec3(700, y + 4, 700),
+            new Vec3(710, y + 1, 700), new Vec3(712, y + 1, 700), new Vec3(710, y + 4, 700)
+        };
+        for (int i = 0; i < corners.length; i++) {
+            Vec3 corner = corners[i];
+            boolean ok = ctx.computeOnClient(mc -> qouteall.imm_ptl.peripheral.wand.ClientPortalWandPortalCreation
+                .protoPortal.tryPlaceCursor(Level.OVERWORLD, corner));
+            if (!ok) {
+                check("portal wand: corner " + i + " accepted", false, corner.toString());
+                return;
+            }
+            if (i == 2) {
+                // the first side is complete: its outline and the plane constraint are rendered
+                ctx.waitTicks(10);
+                screenshot(ctx, "tools_wand_first_side");
+                // Fabric's screenshots render an extra frame without the per-frame gizmo collection, so the wand's
+                // lines (gizmos) are not in them. Save the last normal frame instead.
+                grabLastFrame(ctx, "tools_wand_first_side_frame");
+                ctx.runOnClient(mc -> mc.debugEntries.toggleStatus(
+                    net.minecraft.client.gui.components.debug.DebugScreenEntries.CHUNK_BORDERS));
+                // the wand emits its lines as gizmos (MixinDebugRenderer); collect them here to count them
+                String info = ctx.computeOnClient(mc -> {
+                    ItemStack held = mc.player.getMainHandItem();
+                    net.minecraft.gizmos.SimpleGizmoCollector collector = new net.minecraft.gizmos.SimpleGizmoCollector();
+                    Vec3 cam = mc.gameRenderer.mainCamera().position();
+                    try (var ignored = net.minecraft.gizmos.Gizmos.withCollector(collector)) {
+                        qouteall.imm_ptl.peripheral.wand.PortalWandItem.clientRender(
+                            mc.player, held, new com.mojang.blaze3d.vertex.PoseStack(), cam.x, cam.y, cam.z
+                        );
+                    }
+                    var gizmos = collector.drainGizmos();
+                    Vec3 sideCenter = new Vec3(701, y + 2.5, 700);
+                    long near = gizmos.stream()
+                        .filter(g -> g.gizmo() instanceof net.minecraft.gizmos.LineGizmo line
+                            && line.start().distanceTo(sideCenter) < 3)
+                        .count();
+                    String first = gizmos.isEmpty() ? "-" : gizmos.get(0).gizmo().toString();
+                    return (held.getItem() == qouteall.imm_ptl.peripheral.wand.PortalWandItem.instance)
+                        + "," + gizmos.size() + "," + near + "," + cam + "," + first;
+                });
+                String[] parts = info.split(",", 4);
+                check("portal wand: the first side's outline is drawn at the side",
+                    parts[0].equals("true") && Long.parseLong(parts[2]) > 0,
+                    "holding the wand " + parts[0] + ", lines " + parts[1] + ", near the side " + parts[2]
+                        + ", camera/first " + parts[3]);
+            }
+        }
+        boolean complete = ctx.computeOnClient(mc -> qouteall.imm_ptl.peripheral.wand.ClientPortalWandPortalCreation.protoPortal.isComplete());
+        check("portal wand: the proto portal is complete after 6 corners", complete, "");
+        ctx.runOnClient(mc -> qouteall.imm_ptl.peripheral.wand.ClientPortalWandPortalCreation.finish());
+        AABB box = new AABB(695, y - 2, 695, 717, y + 8, 705);
+        boolean created = waitFor(ctx, 100, () -> countPortals(srv, Level.OVERWORLD, box) >= 2);
+        check("portal wand: finishing creates the portals on the server", created,
+            "portals " + countPortals(srv, Level.OVERWORLD, box));
+
+        for (var mode : List.of(qouteall.imm_ptl.peripheral.wand.PortalWandItem.Mode.DRAG_PORTAL, qouteall.imm_ptl.peripheral.wand.PortalWandItem.Mode.COPY_PORTAL)) {
+            srv.runOnServer(s -> serverPlayer(s).getMainHandItem().set(qouteall.imm_ptl.peripheral.wand.PortalWandItem.COMPONENT_TYPE, mode));
+            ctx.waitTicks(20);
+            screenshot(ctx, "tools_wand_" + mode.name().toLowerCase(Locale.ROOT));
+        }
+        srv.runOnServer(s -> serverPlayer(s).setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY));
+    }
+
+    /**
+     * The test datapack (written into the save before it's opened again): a portal with a gold block frame,
+     * lit by using a stick on the frame, leading to the nether (1:1, the frame is generated there).
+     */
+    private void writeTestDatapack() {
+        Path pack = worldSave.getSaveDirectory().resolve("datapacks").resolve("immptl_test");
+        try {
+            Files.createDirectories(pack.resolve("data/immptl_test/custom_portal_generation"));
+            Files.writeString(pack.resolve("pack.mcmeta"),
+                "{\"pack\": {\"description\": \"ImmPtl feature test\", \"min_format\": 121, \"max_format\": 121}}\n");
+            Files.writeString(pack.resolve("data/immptl_test/custom_portal_generation/gold_portal.json"), """
+                {
+                  "schema_version": "imm_ptl:v1",
+                  "from": ["minecraft:overworld"],
+                  "to": "minecraft:the_nether",
+                  "space_ratio_from": 1,
+                  "space_ratio_to": 1,
+                  "form": {
+                    "type": "imm_ptl:classical",
+                    "from_frame_block": "minecraft:gold_block",
+                    "area_block": "minecraft:air",
+                    "to_frame_block": "minecraft:gold_block",
+                    "generate_frame_if_not_found": true
+                  },
+                  "trigger": {"type": "imm_ptl:use_item", "item": "minecraft:stick"}
+                }
+                """);
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private void customPortalGeneration(ClientGameTestContext ctx, TestServerContext srv) {
+        int y = groundY(srv, Level.OVERWORLD, 760, 760);
+        buildFrame(srv, 760, y, 760, "minecraft:gold_block");
+        srv.runCommand(String.format(Locale.ROOT, "tp Player0 761.5 %d 756.5 0 0", y + 1));
+        ctx.waitTicks(20);
+        useItemOn(srv, new ItemStack(Items.STICK), new BlockPos(761, y, 760), Direction.UP);
+        AABB box = new AABB(755, y - 2, 755, 770, y + 8, 765);
+        boolean created = waitFor(ctx, 300, () -> countPortals(srv, Level.OVERWORLD, box) >= 1);
+        check("custom portal gen: using a stick on the gold frame creates a portal", created,
+            "portals " + countPortals(srv, Level.OVERWORLD, box));
+        if (created) {
+            ResourceKey<Level> dest = srv.computeOnServer(s -> s.overworld()
+                .getEntitiesOfClass(Portal.class, box).get(0).getDestDim());
+            check("custom portal gen: the portal leads to the nether", dest == Level.NETHER, "dest " + dest.identifier());
+            ctx.waitTicks(60);
+            screenshot(ctx, "tools_custom_portal_gen");
+        }
     }
 
     // chunks within the render distance of the player that are not in the client chunk cache (max 10 listed)

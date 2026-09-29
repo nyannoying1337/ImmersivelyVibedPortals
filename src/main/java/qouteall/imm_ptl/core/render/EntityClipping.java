@@ -32,7 +32,7 @@ import java.util.WeakHashMap;
  *     <li>Building: submits are built in runs of equal planes. Within a clipped run, the vertex builder of
  *     every quad render type is wrapped by a {@link ClippingVertexConsumer}.</li>
  * </ol>
- * Only quad geometry is clipped (entity models, items, blocks, shadows, flames). Lines (leashes) and text are not.
+ * Quads (entity models, items, blocks, shadows, flames, name tags) and triangle strips (leashes) are clipped.
  */
 @Environment(EnvType.CLIENT)
 public class EntityClipping {
@@ -131,10 +131,12 @@ public class EntityClipping {
         if (planes == null) {
             return builder;
         }
-        if (renderType.primitiveTopology() != com.mojang.renderpearl.api.pipeline.PrimitiveTopology.QUADS) {
+        var topology = renderType.primitiveTopology();
+        boolean isStrip = topology == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLE_STRIP;
+        if (topology != com.mojang.renderpearl.api.pipeline.PrimitiveTopology.QUADS && !isStrip) {
             return builder;
         }
-        ClippingVertexConsumer consumer = new ClippingVertexConsumer(builder, planes);
+        ClippingVertexConsumer consumer = new ClippingVertexConsumer(builder, planes, isStrip);
         pendingConsumers.add(consumer);
         return consumer;
     }
@@ -191,8 +193,10 @@ public class EntityClipping {
     }
 
     /**
-     * Buffers each quad, clips it by the planes (Sutherland-Hodgman) and writes the remaining polygon
+     * Quads: buffers each quad, clips it by the planes (Sutherland-Hodgman) and writes the remaining polygon
      * as quads (a triangle becomes a quad with a repeated vertex).
+     * Triangle strip (leashes): buffers the whole strip, clips each of its triangles and writes the remaining
+     * triangles as one strip, joined by degenerate (zero area) triangles.
      */
     public static final class ClippingVertexConsumer implements VertexConsumer {
         private static final int HAS_COLOR = 1, HAS_UV = 2, HAS_UV1 = 4, HAS_UV2 = 8, HAS_UV3 = 16,
@@ -200,26 +204,39 @@ public class EntityClipping {
 
         private final VertexConsumer delegate;
         private final float[] planes;
+        private final boolean isStrip;
 
         private final Vertex[] quad = {new Vertex(), new Vertex(), new Vertex(), new Vertex()};
         private int vertexCount = 0;
         private int attributes = 0;
 
+        // the buffered vertices of a triangle strip
+        private final List<Vertex> strip = new ArrayList<>();
+
         // polygon buffers for clipping. A quad clipped by n planes has at most 4 + n vertices
         private Vertex[] polygon = new Vertex[0];
         private Vertex[] clipped = new Vertex[0];
 
-        public ClippingVertexConsumer(VertexConsumer delegate, float[] planes) {
+        public ClippingVertexConsumer(VertexConsumer delegate, float[] planes, boolean isStrip) {
             this.delegate = delegate;
             this.planes = planes;
+            this.isStrip = isStrip;
         }
 
         private Vertex current() {
-            return quad[vertexCount - 1];
+            return isStrip ? strip.getLast() : quad[vertexCount - 1];
         }
 
         @Override
         public VertexConsumer addVertex(float x, float y, float z) {
+            if (isStrip) {
+                Vertex vertex = new Vertex();
+                vertex.x = x;
+                vertex.y = y;
+                vertex.z = z;
+                strip.add(vertex);
+                return this;
+            }
             if (vertexCount == 4) {
                 emitQuad();
             }
@@ -291,6 +308,10 @@ public class EntityClipping {
         }
 
         public void flush() {
+            if (isStrip) {
+                emitStrip();
+                return;
+            }
             if (vertexCount == 4) {
                 emitQuad();
             }
@@ -334,15 +355,89 @@ public class EntityClipping {
                 return;
             }
 
-            int capacity = 4 + planeCount;
+            int size = clipPolygon(quad, 4);
+            if (size < 3) {
+                return;
+            }
+
+            // triangle fan around vertex 0, two triangles per quad
+            for (int i = 1; i + 1 < size; i += 2) {
+                write(polygon[0]);
+                write(polygon[i]);
+                write(polygon[i + 1]);
+                write(polygon[Math.min(i + 2, size - 1)]);
+            }
+        }
+
+        private void emitStrip() {
+            if (strip.size() < 3) {
+                strip.clear();
+                return;
+            }
+            int planeCount = planes.length / 4;
+            boolean allInside = true;
+            for (Vertex vertex : strip) {
+                for (int p = 0; p < planeCount; p++) {
+                    if (distance(vertex, p) < 0) {
+                        allInside = false;
+                    }
+                }
+            }
+            if (allInside) {
+                for (Vertex vertex : strip) {
+                    write(vertex);
+                }
+                strip.clear();
+                return;
+            }
+
+            // triangle i of the strip is (i, i+1, i+2); the winding alternates, but it doesn't matter
+            // for the strips drawn here (leashes are drawn without culling)
+            @Nullable Vertex lastWritten = null;
+            Vertex[] triangle = new Vertex[3];
+            for (int i = 0; i + 2 < strip.size(); i++) {
+                triangle[0] = strip.get(i);
+                triangle[1] = strip.get(i + 1);
+                triangle[2] = strip.get(i + 2);
+                int size = clipPolygon(triangle, 3);
+                // fan triangles of the clipped polygon
+                for (int j = 1; j + 1 < size; j++) {
+                    if (lastWritten != null) {
+                        // degenerate triangles joining the previous triangle with this one
+                        write(lastWritten);
+                        write(polygon[0]);
+                    }
+                    write(polygon[0]);
+                    write(polygon[j]);
+                    write(polygon[j + 1]);
+                    lastWritten = copyOf(polygon[j + 1]);
+                }
+            }
+            strip.clear();
+        }
+
+        private static Vertex copyOf(Vertex vertex) {
+            Vertex result = new Vertex();
+            result.set(vertex);
+            return result;
+        }
+
+        /**
+         * Clips the polygon by all planes. The result is in {@link #polygon}.
+         *
+         * @return the vertex count of the result
+         */
+        private int clipPolygon(Vertex[] input, int inputSize) {
+            int planeCount = planes.length / 4;
+            int capacity = inputSize + planeCount;
             if (polygon.length < capacity) {
                 polygon = newVertices(capacity);
                 clipped = newVertices(capacity);
             }
-            for (int i = 0; i < 4; i++) {
-                polygon[i].set(quad[i]);
+            for (int i = 0; i < inputSize; i++) {
+                polygon[i].set(input[i]);
             }
-            int size = 4;
+            int size = inputSize;
             for (int p = 0; p < planeCount && size > 0; p++) {
                 int outSize = 0;
                 for (int i = 0; i < size; i++) {
@@ -362,17 +457,7 @@ public class EntityClipping {
                 clipped = swap;
                 size = outSize;
             }
-            if (size < 3) {
-                return;
-            }
-
-            // triangle fan around vertex 0, two triangles per quad
-            for (int i = 1; i + 1 < size; i += 2) {
-                write(polygon[0]);
-                write(polygon[i]);
-                write(polygon[i + 1]);
-                write(polygon[Math.min(i + 2, size - 1)]);
-            }
+            return size;
         }
 
         private static Vertex[] newVertices(int n) {

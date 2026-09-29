@@ -19,6 +19,7 @@ to **Minecraft 26.3 (Fabric)**. The original project stopped at Minecraft 1.21.1
 - End portals: filling the frame, the End, the dragon fight's exit portal and the credits
 - Portals to far-away places of the same dimension, mirrors, portals inside portals
 - Global portals: world wrapping and dimension stacks; `/portal` commands like `make_portal`
+- The portal wand, portal helper blocks, command sticks, breakable mirrors (flint and steel on glass) and custom portal generation from datapacks
 - Entities halfway through a portal are cut at the portal plane and show on the other side
 - Third-person view through portals; smooth camera turn after going through a rotated portal
 - Sodium (0.9.2+) and Iris (1.11.6+); shaderpacks checked: Complementary Reimagined, BSL
@@ -26,8 +27,6 @@ to **Minecraft 26.3 (Fabric)**. The original project stopped at Minecraft 1.21.1
 
 ### Known issues
 - Shaderpacks are experimental: checked in the automated test, not in real gameplay yet. Iris needs the OpenGL backend
-- Leashes of entities crossing a portal are not cut at the portal plane
-- Not tested in game yet: the portal wand, the portal helper, the command stick, custom portal generation (datapacks)
 - More in the [wiki's known issues](https://github.com/nyannoying1337/ImmersivelyVibedPortals/wiki/Known-Issues)
 
 ### What changed in the port

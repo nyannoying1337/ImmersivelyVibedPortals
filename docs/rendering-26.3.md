@@ -72,7 +72,7 @@ An entity halfway through a portal is clipped by the portal plane: the original 
 clip plane on the GPU (entities are batched per render type into one vertex buffer), so this is done on the CPU
 (`EntityClipping`): extracted render states get their planes, the submits made while such a state is submitted
 are tagged, and `RenderTypeFeatureRenderer` builds tagged submits with a vertex consumer that cuts every quad by
-the planes. Works the same with Sodium and Iris. Lines (leashes) and text are not clipped.
+the planes (quads; triangle strips like leashes are clipped per triangle). Works the same with Sodium and Iris.
 
 ### ViewArea of other dimensions
 The renderer of a dimension other than the main view's one is only used by portal views. Its ViewArea (a fixed grid

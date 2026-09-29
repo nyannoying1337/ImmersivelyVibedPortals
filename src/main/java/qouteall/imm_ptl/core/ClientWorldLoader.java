@@ -72,6 +72,8 @@ public class ClientWorldLoader {
         new Object2ObjectOpenHashMap<>();
     
     public static @Nullable Map<ResourceKey<Level>, ResourceKey<DimensionType>> dimIdToDimTypeId;
+    // synced with dimIdToDimTypeId (MiscNetworking.DimIdSyncPacket)
+    public static @Nullable Map<ResourceKey<Level>, Integer> dimIdToSeaLevel;
     
     private static final Minecraft CLIENT = Minecraft.getInstance();
     
@@ -99,6 +101,7 @@ public class ClientWorldLoader {
         
         IPCGlobal.CLIENT_EXIT_EVENT.register(() -> {
             dimIdToDimTypeId = null;
+            dimIdToSeaLevel = null;
         });
     }
     
@@ -397,8 +400,10 @@ public class ClientWorldLoader {
                 pendingRenderer.levelExtractor(),
                 CLIENT.level.isDebug(),
                 CLIENT.level.getBiomeManager().biomeZoomSeed,
-                // TODO(26.3): vanilla gets the sea level per dimension on respawn, ImmPtl does not sync it yet
-                CLIENT.level.getSeaLevel()
+                // vanilla only syncs the sea level of the player's dimension (on login/respawn)
+                dimIdToSeaLevel != null
+                    ? dimIdToSeaLevel.getOrDefault(dimension, CLIENT.level.getSeaLevel())
+                    : CLIENT.level.getSeaLevel()
             );
             
             // all worlds share the same map data map
