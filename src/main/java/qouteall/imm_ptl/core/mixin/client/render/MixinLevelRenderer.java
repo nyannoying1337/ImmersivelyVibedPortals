@@ -20,6 +20,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import qouteall.imm_ptl.core.render.EntityClipping;
 import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.VisibleSectionDiscovery;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
@@ -52,10 +53,8 @@ import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
  * sky eye position (the sky is extracted from the view camera), glowing entity suppression
  * (the entity outline is only blitted for the main view: GameRenderer.render calls blitEntityOutline after the main view).
  * <p>
- * TODO(26.3): cross-portal entity rendering (CrossPortalEntityRenderer: an entity touching a portal is clipped by the portal
- *  plane and its projection is rendered on the other side). 1.21.1 hooked LevelRenderer.renderLevel around each renderEntity call
- *  and set up per-draw clip planes. In 26.3 entities are submitted from EntityRenderStates in LevelRenderer.submitEntities
- *  (no Entity reference, no per-draw clip planes); needs a new approach (e.g. per-render-state clip plane in extraction).
+ * Cross-portal entity rendering: an entity touching a portal is clipped by the portal plane on the CPU
+ *  (EntityClipping) and its projection is rendered on the other side (CrossPortalEntityRenderer).
  * TODO(26.3): mirror face culling. With an odd number of mirrors the view transformation flips the winding order, so
  *  back-face culling culls the wrong faces (1.21.1 flipped the GL cull face around terrain layers and sky).
  *  Cull mode is fixed in 26.3 RenderPipelines; e.g. render the view with the un-mirrored camera and flip the view texture
@@ -121,6 +120,12 @@ public abstract class MixinLevelRenderer {
     @Unique
     private boolean ip_isPortalViewWithMainLevelRenderer() {
         return VisibleSectionDiscovery.isRenderingPortalViewWithMainLevelRenderer((LevelRenderer) (Object) this);
+    }
+
+    // the submits of the previous render (another view or the last frame) are built already
+    @Inject(method = "submitFeatures", at = @At("HEAD"))
+    private void onSubmitFeatures(CallbackInfo ci) {
+        EntityClipping.onBeginSubmitFeatures();
     }
 
     @Inject(method = "visibleSections", at = @At("HEAD"))

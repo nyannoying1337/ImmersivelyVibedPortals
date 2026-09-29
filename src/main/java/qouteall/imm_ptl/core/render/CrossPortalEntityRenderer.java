@@ -46,15 +46,9 @@ import java.util.WeakHashMap;
  * Its position is moved by the portal transformation and the rotation/scaling of the portal
  * is applied around the entity origin when it's submitted (see {@link #applyProjectionTransformation}).
  * <p>
- * Clipping: in 1.21.1 the entity was clipped by a per-entity clip plane
- * (outer clipping for the original, inner clipping for the projection).
- * In 26.3 there is only one clip plane per view (the view's portal plane, {@link PortalClipping}),
- * so:
- * <ul>
- *     <li>A projection seen through the portal it goes through is clipped correctly by the view's plane.</li>
- *     <li>The part of the original entity that went through the portal is behind the portal surface,
- *     which writes depth, so it's hidden when looking at the portal from the front.</li>
- * </ul>
+ * Clipping: the original entity is clipped by the outer clipping plane of the portals it touches
+ * (the part that went through is invisible), the projection by the inner clipping plane of its portal
+ * (the part that has not gone through yet is invisible). The planes are applied on the CPU, see {@link EntityClipping}.
  */
 @Environment(EnvType.CLIENT)
 public class CrossPortalEntityRenderer {
@@ -97,6 +91,34 @@ public class CrossPortalEntityRenderer {
         if (((IEEntity) entity).ip_isCollidingWithPortal()) {
             collidedEntities.put(entity, null);
         }
+    }
+
+    /**
+     * Called after an entity is extracted into a render state (for the original entity and for projections).
+     * Sets the outer clipping planes of the portals the entity is going through.
+     */
+    public static void onEntityExtracted(Entity entity, EntityRenderState state) {
+        if (collidedEntities.isEmpty() || !collidedEntities.containsKey(entity)) {
+            return;
+        }
+        if (!isCrossPortalRenderingEnabled()) {
+            return;
+        }
+        PortalCollisionHandler collisionHandler = ((IEEntity) entity).ip_getPortalCollisionHandler();
+        if (collisionHandler == null) {
+            return;
+        }
+        java.util.List<Plane> planes = new java.util.ArrayList<>();
+        for (PortalCollisionEntry e : collisionHandler.portalCollisions) {
+            if (e.portal instanceof Mirror) {
+                continue;
+            }
+            Plane outerClipping = e.portal.getOuterClipping();
+            if (outerClipping != null) {
+                planes.add(outerClipping);
+            }
+        }
+        EntityClipping.setStatePlanes(state, planes.toArray(Plane[]::new));
     }
 
     private static boolean isCrossPortalRenderingEnabled() {
@@ -157,6 +179,11 @@ public class CrossPortalEntityRenderer {
                 state.z = newPos.z;
                 state.distanceToCameraSq = newPos.distanceToSqr(camera.position());
 
+                // only the part that went through the portal is visible
+                // (replaces the outer clipping set by onEntityExtracted, that's for the original)
+                Plane innerClipping = collidingPortal.getInnerClipping();
+                EntityClipping.setStatePlanes(state, innerClipping == null ? null : new Plane[]{innerClipping});
+
                 if (collidingPortal.getScaling() != 1.0 || collidingPortal.getRotation() != null) {
                     projectionStates.put(state, collidingPortal);
                 }
@@ -215,14 +242,6 @@ public class CrossPortalEntityRenderer {
             if (!PortalManipulation.isOtherSideBoxInside(transformedBoundingBox, renderingPortal)) {
                 return false;
             }
-        }
-        else {
-            // TODO(26.3): the projection should be clipped by the inner clipping plane of the colliding portal
-            //  (the part that has not yet gone through the portal should be invisible).
-            //  Only one clip plane per view exists now (PortalClipping, the view's portal plane),
-            //  so when the projection is rendered in the main view it's not clipped.
-            //  The same applies to the original entity (outer clipping) seen from behind the portal.
-            //  Possible solution: a per-draw clip plane for entity render types (e.g. a dynamic transforms UBO field).
         }
 
         if (entity instanceof LocalPlayer) {

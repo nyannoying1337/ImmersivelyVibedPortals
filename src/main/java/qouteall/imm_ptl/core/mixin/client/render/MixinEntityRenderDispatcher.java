@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.render.CrossPortalEntityRenderer;
+import qouteall.imm_ptl.core.render.EntityClipping;
 
 @Mixin(EntityRenderDispatcher.class)
 public class MixinEntityRenderDispatcher {
@@ -49,5 +50,31 @@ public class MixinEntityRenderDispatcher {
         CallbackInfo ci
     ) {
         CrossPortalEntityRenderer.applyProjectionTransformation(renderState, poseStack);
+    }
+    // entities halfway through a portal are clipped by the portal plane (see EntityClipping)
+    @Inject(method = "extractEntity", at = @At("RETURN"))
+    private void onExtractEntity(Entity entity, float partialTicks, CallbackInfoReturnable<EntityRenderState> cir) {
+        CrossPortalEntityRenderer.onEntityExtracted(entity, cir.getReturnValue());
+    }
+
+    @Inject(
+        method = "submit(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lnet/minecraft/client/renderer/state/level/CameraRenderState;DDDLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;)V",
+        at = @At("HEAD")
+    )
+    private void onSubmitEntityBegin(
+        EntityRenderState renderState, CameraRenderState camera,
+        double x, double y, double z,
+        PoseStack poseStack, SubmitNodeCollector submitNodeCollector,
+        CallbackInfo ci
+    ) {
+        EntityClipping.onBeginSubmitEntity(renderState, camera.pos);
+    }
+
+    @Inject(
+        method = "submit(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lnet/minecraft/client/renderer/state/level/CameraRenderState;DDDLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;)V",
+        at = @At("RETURN")
+    )
+    private void onSubmitEntityEnd(CallbackInfo ci) {
+        EntityClipping.onEndSubmitEntity();
     }
 }

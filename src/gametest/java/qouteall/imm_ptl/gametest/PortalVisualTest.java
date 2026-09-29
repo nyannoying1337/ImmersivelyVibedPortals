@@ -181,6 +181,7 @@ public class PortalVisualTest implements FabricClientGameTest {
 
             shootGlobalPortalAndMirror(ctx, sp, srv);
             shootClouds(ctx, sp, srv);
+            shootEntityClipping(ctx, srv);
 
             // walk through the plane with teleportation enabled
             ctx.runOnClient(mc -> IPGlobal.disableTeleportation = false);
@@ -275,6 +276,33 @@ public class PortalVisualTest implements FabricClientGameTest {
 
         srv.runOnServer(s -> s.getLevel(Level.NETHER)
             .getEntitiesOfClass(Portal.class, new AABB(3.5, 60, 0, 6.5, 72, 1))
+            .forEach(Entity::discard));
+        ctx.waitTicks(10);
+    }
+
+    /**
+     * Entity halfway through the portal: a cow at z=0.6 facing -Z, its head through the plane z=0.5.
+     * Front (looking -Z): the cow's back half in the nether, its head inside the portal (in the overworld view),
+     * nothing of it doubled or missing at the plane.
+     * Behind (looking +Z through the other face of the portal): no cow at all. The part that went through
+     * is in the overworld, the rest is behind the portal surface. Cow parts in front of the portal are a bug
+     * (the part of the entity that went through is not clipped).
+     */
+    void shootEntityClipping(ClientGameTestContext ctx, TestServerContext srv) {
+        srv.runCommand(NETHER + "summon minecraft:cow 1.0 65.0 0.6 {NoAI:1b,Silent:1b,Rotation:[180f,0f],Tags:[\"immptl_test\"]}");
+        ctx.waitTicks(20);
+        for (Pose p : List.of(
+            new Pose("entity_behind", 1.0, 65.0, -2.5, 0, 15),
+            new Pose("entity_behind_diag", -1.0, 65.0, -2.0, -35, 15),
+            // (end on the front side: the walk sequence teleports from here with teleportation enabled)
+            new Pose("entity_front", 1.0, 65.0, 3.5, 180, 15),
+            new Pose("entity_front_diag", 3.0, 65.0, 3.0, 145, 15)
+        )) {
+            shoot(ctx, srv, p);
+        }
+        // remove it at once (a killed mob stays for the death animation and pushes the player in the walk sequence)
+        srv.runOnServer(s -> s.getLevel(Level.NETHER)
+            .getEntitiesOfClass(Entity.class, FRAME, e -> e.entityTags().contains("immptl_test"))
             .forEach(Entity::discard));
         ctx.waitTicks(10);
     }

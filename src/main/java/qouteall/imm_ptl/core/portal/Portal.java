@@ -1449,6 +1449,15 @@ public class Portal extends Entity implements
         );
     }
     
+    /**
+     * The plane that clips the part of an entity that went through this portal.
+     * The normal points to the remaining side.
+     */
+    @Nullable
+    public Plane getOuterClipping() {
+        return getPortalShape().getOuterClipping(getThisSideState());
+    }
+    
     @Nullable
     @Override
     public Plane getInnerClipping() {
