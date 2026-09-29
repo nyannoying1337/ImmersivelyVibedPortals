@@ -25,18 +25,10 @@ import qouteall.imm_ptl.core.teleportation.ClientTeleportationManager;
  * the camera is also on the other side.
  * In these cases the whole view must show the portal's destination, seen from the transformed camera position.
  * <p>
- * This class only computes the cross-portal view ({@link #getCrossPortalView}).
- * TODO(26.3): nothing renders the cross-portal view yet.
- *  In 1.21.1, {@code MyGameRenderer} redirected {@code GameRenderer.renderLevel} and rendered the
- *  destination world instead. In 26.3 the main view is extracted and rendered by vanilla
- *  ({@code GameRenderer.extract} / {@code render}), so it needs a hook in the new design, e.g. in
- *  {@code PortalViewRenderer.renderPortalViews} (the GameRenderer.extract HEAD hook, the main camera is updated then):
- *  if {@link #getCrossPortalView} returns non-null, render {@link CrossPortalView#worldRenderInfo()}
- *  with {@code PortalViewRenderer.renderWorldIntoTarget} into a window-sized target and draw that target over
- *  the main target after the main level render (before the hand/GUI); or, cheaper, keep the destination
- *  context (level, LevelRenderer/LevelExtractor, camera, fog, lightmap) swapped in for the whole main
- *  extract + render of that frame. The portal views planned for that frame must then start from the
- *  destination world and the transformed camera.
+ * This class computes the cross-portal view ({@link #getCrossPortalView}).
+ * {@code PortalViewRenderer.renderPortalViews} renders it (with the portals seen from there) into a window-sized
+ * target, and {@code MixinGameRenderer} copies that over the main image after the main level render,
+ * before the hand and HUD. (The main level is still rendered; it's only replaced.)
  */
 public class CrossPortalViewRendering {
     public static final Minecraft client = Minecraft.getInstance();

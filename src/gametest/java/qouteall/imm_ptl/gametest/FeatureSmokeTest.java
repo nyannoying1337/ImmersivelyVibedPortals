@@ -9,6 +9,14 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContex
 import net.fabricmc.fabric.api.client.gametest.v1.screenshot.TestScreenshotOptions;
 import net.fabricmc.fabric.api.client.gametest.v1.world.TestWorldSave;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.WinScreen;
+import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -73,6 +81,9 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             IPGlobal.disableTeleportation = false;
         });
         ctx.waitForScreen(TitleScreen.class);
+        if (Boolean.getBoolean("imm_ptl.featureTest.skip")) {
+            return;
+        }
 
         try (TestSingleplayerContext sp = ctx.worldBuilder()
             .adjustSettings(s -> s.setGameMode(WorldCreationUiState.SelectedGameMode.CREATIVE))
@@ -207,13 +218,34 @@ public class FeatureSmokeTest implements FabricClientGameTest {
     }
 
     /**
-     * Completing an end portal frame creates a see-through end portal; falling into it leads to the End.
+     * Like in a stronghold: a ring of end portal frames; the player inserts the last eye of ender
+     * (the real item use, which fills the hole with placeholder blocks and creates the see-through
+     * end portal); falling into it leads to the End.
      */
     private void endPortal(ClientGameTestContext ctx, TestServerContext srv) {
         int ground = groundY(srv, Level.OVERWORLD, 60, 20);
-        Vec3 center = new Vec3(60.5, ground + 0.5, 20.5);
-        srv.runOnServer(s -> EndPortalEntity.onEndPortalComplete(s.overworld(), center));
+        int cx = 60, cz = 20, y = ground;
+        Vec3 center = new Vec3(cx + 0.5, y + 0.5, cz + 0.5);
+        for (int d = -1; d <= 1; d++) {
+            srv.runCommand(String.format(Locale.ROOT, "setblock %d %d %d minecraft:end_portal_frame[facing=south,eye=true]", cx + d, y, cz - 2));
+            srv.runCommand(String.format(Locale.ROOT, "setblock %d %d %d minecraft:end_portal_frame[facing=north,eye=true]", cx + d, y, cz + 2));
+            srv.runCommand(String.format(Locale.ROOT, "setblock %d %d %d minecraft:end_portal_frame[facing=east,eye=true]", cx - 2, y, cz + d));
+            srv.runCommand(String.format(Locale.ROOT, "setblock %d %d %d minecraft:end_portal_frame[facing=west,eye=%b]", cx + 2, y, cz + d, d != 1));
+        }
+        srv.runCommand(String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:air", cx - 1, y, cz - 1, cx + 1, y, cz + 1));
+
+        // the player inserts the last eye
+        BlockPos lastFrame = new BlockPos(cx + 2, y, cz + 1);
+        srv.runOnServer(s -> {
+            ServerPlayer player = s.getPlayerList().getPlayers().get(0);
+            ItemStack eye = new ItemStack(Items.ENDER_EYE);
+            player.setItemInHand(InteractionHand.MAIN_HAND, eye);
+            BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(lastFrame).add(0, 0.5, 0), Direction.UP, lastFrame, false);
+            eye.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
+        });
         ctx.waitTicks(10);
+        check("end: inserting the last eye filled the frame", srv.computeOnServer(s ->
+            s.overworld().getBlockState(lastFrame).getValue(net.minecraft.world.level.block.EndPortalFrameBlock.HAS_EYE)), "");
         boolean created = srv.computeOnServer(s ->
             !s.overworld().getEntitiesOfClass(EndPortalEntity.class, new AABB(center, center).inflate(4)).isEmpty()
         );
@@ -222,7 +254,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             return;
         }
 
-        srv.runCommand(String.format(Locale.ROOT, "tp Player0 %.1f %d %.1f 0 60", 60.5, ground + 6, 22.5));
+        srv.runCommand(String.format(Locale.ROOT, "tp Player0 %.1f %d %.1f 180 60", cx + 0.5, y + 6, cz + 3.5));
         ctx.waitTicks(40);
         screenshot(ctx, "end_portal_from_above");
 
@@ -230,13 +262,18 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             p.getAbilities().flying = false;
             p.onUpdateAbilities();
         }));
-        srv.runCommand(String.format(Locale.ROOT, "tp Player0 %.1f %d %.1f 0 90", 60.5, ground + 3, 20.5));
+        srv.runCommand(String.format(Locale.ROOT, "tp Player0 %.1f %d %.1f 0 90", cx + 0.5, y + 3, cz + 0.5));
+        ctx.runOnClient(mc -> {
+            mc.player.getAbilities().flying = false;
+            mc.player.onUpdateAbilities();
+        });
         boolean inEnd = waitFor(ctx, 400, () -> ctx.computeOnClient(mc -> mc.level != null && mc.level.dimension() == Level.END));
         check("end: falling into the end portal enters the End", inEnd,
             "client dim " + ctx.computeOnClient(mc -> mc.level.dimension().identifier()));
         if (inEnd) {
             ctx.waitTicks(60);
             screenshot(ctx, "arrived_in_end");
+            endExitPortal(ctx, srv);
         }
 
         // back to the overworld for the next scenes
@@ -246,6 +283,75 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             p.getAbilities().flying = true;
             p.onUpdateAbilities();
         }));
+    }
+
+    /**
+     * In the End: kill the dragon, wait for the exit portal on the podium, and fall into it.
+     * That leaves the End (vanilla shows the credits first, then the player is in the overworld).
+     */
+    private void endExitPortal(ClientGameTestContext ctx, TestServerContext srv) {
+        boolean dragon = waitFor(ctx, 600, () -> srv.computeOnServer(s -> !s.getLevel(Level.END).getDragons().isEmpty()));
+        check("end: the ender dragon spawned", dragon, "");
+        if (!dragon) {
+            return;
+        }
+        srv.runCommand("execute in minecraft:the_end run kill @e[type=minecraft:ender_dragon]");
+
+        // the death animation takes 200 ticks, then the exit portal is placed on the podium
+        BlockPos[] portalBlock = {null};
+        boolean exit = waitFor(ctx, 1200, () -> {
+            portalBlock[0] = srv.computeOnServer(s -> findBlock(s.getLevel(Level.END), 8, 40, 90, Blocks.END_PORTAL));
+            return portalBlock[0] != null;
+        });
+        check("end: killing the dragon created the exit portal", exit, "");
+        if (!exit) {
+            return;
+        }
+        BlockPos p = portalBlock[0];
+
+        srv.runCommand(String.format(Locale.ROOT, "execute in minecraft:the_end run tp Player0 %d %d %d 0 50", p.getX(), p.getY() + 4, p.getZ() - 6));
+        ctx.waitTicks(40);
+        screenshot(ctx, "end_exit_portal");
+
+        // fall into it
+        srv.runCommand(String.format(Locale.ROOT, "execute in minecraft:the_end run tp Player0 %.1f %d %.1f 0 90", p.getX() + 0.5, p.getY() + 3, p.getZ() + 0.5));
+        ctx.runOnClient(mc -> {
+            mc.player.getAbilities().flying = false;
+            mc.player.onUpdateAbilities();
+        });
+        setFlying(srv, false);
+        boolean left = waitFor(ctx, 600, () -> ctx.computeOnClient(mc ->
+            mc.gui.screen() instanceof WinScreen
+                || (mc.level != null && mc.level.dimension() == Level.OVERWORLD)
+        ));
+        check("end: entering the exit portal leaves the End (credits or overworld)", left,
+            "client dim " + ctx.computeOnClient(mc -> mc.level == null ? "none" : mc.level.dimension().identifier().toString())
+                + ", screen " + ctx.computeOnClient(mc -> String.valueOf(mc.gui.screen())));
+        // skip the credits
+        ctx.runOnClient(mc -> {
+            if (mc.gui.screen() instanceof WinScreen winScreen) {
+                winScreen.onClose();
+            }
+        });
+        boolean inOverworld = waitFor(ctx, 600, () -> ctx.computeOnClient(mc ->
+            mc.level != null && mc.level.dimension() == Level.OVERWORLD && mc.gui.screen() == null));
+        check("end: after the credits the player is in the overworld", inOverworld,
+            "client dim " + ctx.computeOnClient(mc -> mc.level == null ? "none" : mc.level.dimension().identifier().toString()));
+        if (inOverworld) {
+            ctx.waitTicks(40);
+            screenshot(ctx, "back_from_end");
+        }
+    }
+
+    private static @org.jetbrains.annotations.Nullable BlockPos findBlock(
+        ServerLevel level, int radius, int minY, int maxY, net.minecraft.world.level.block.Block block
+    ) {
+        for (BlockPos pos : BlockPos.betweenClosed(-radius, minY, -radius, radius, maxY, radius)) {
+            if (level.getBlockState(pos).is(block)) {
+                return pos.immutable();
+            }
+        }
+        return null;
     }
 
     /**

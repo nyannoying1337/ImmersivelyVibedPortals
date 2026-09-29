@@ -187,12 +187,18 @@ public class ClientWorldLoader {
         
     }
     
-    public static void cleanUp() {
-        // give vanilla back its own instances, so it keeps using them for the next level
+    /**
+     * Give vanilla back its own LevelRenderer, LevelExtractor and lightmap, so it keeps using them for the next level.
+     */
+    public static void switchToVanillaRendering() {
         RENDER_HELPER_MAP.values().stream()
             .filter(h -> h.isVanillaOriginal)
             .findFirst()
             .ifPresent(ClientWorldLoader::switchClientRenderingTo);
+    }
+
+    public static void cleanUp() {
+        switchToVanillaRendering();
 
         RENDER_HELPER_MAP.values().forEach(DimensionRenderHelper::cleanUp);
         RENDER_HELPER_MAP.clear();

@@ -172,6 +172,13 @@ public class PortalVisualTest implements FabricClientGameTest {
                 shoot(ctx, srv, p);
             }
 
+            // third person: the player stands in front of the portal facing away from it, the camera behind the
+            // player is on the other side of the portal plane, so the whole view must be the overworld seen from
+            // the transformed camera: the frame's overworld side up close, and the player in the nether through it
+            ctx.runOnClient(mc -> mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_BACK));
+            shoot(ctx, srv, new Pose("thirdperson_behind_portal", 1.0, 65.0, 2.0, 0, 0));
+            ctx.runOnClient(mc -> mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON));
+
             shootGlobalPortalAndMirror(ctx, sp, srv);
             shootClouds(ctx, sp, srv);
 

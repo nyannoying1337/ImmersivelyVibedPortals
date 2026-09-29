@@ -149,8 +149,20 @@ public class PortalViewRenderer {
         return targetPool.indexOf(target);
     }
     
+    /**
+     * When the camera is on the other side of a portal than the player (third person, view bobbing),
+     * the whole view shows the portal's destination: it's rendered into this target, which replaces
+     * the main image after the main level render (see MixinGameRenderer). Null when not needed this frame.
+     */
+    private static @Nullable TextureTarget crossPortalViewTarget = null;
+
+    public static @Nullable TextureTarget getCrossPortalViewTarget() {
+        return crossPortalViewTarget;
+    }
+
     public static void renderPortalViews(DeltaTracker deltaTracker) {
         targetPool.beginFrame();
+        crossPortalViewTarget = null;
         fogRenderersUsed = 0;
         cloudRenderersUsed = 0;
         rootNode = null;
@@ -178,6 +190,16 @@ public class PortalViewRenderer {
         long startNanos = System.nanoTime();
         try {
             renderChildViews(root, mainCamera, deltaTracker);
+
+            CrossPortalViewRendering.CrossPortalView crossPortalView =
+                CrossPortalViewRendering.getCrossPortalView(mainCamera);
+            if (crossPortalView != null) {
+                TextureTarget target = targetPool.acquire(IPGlobal.portalRenderLimit + 1);
+                if (target != null) {
+                    renderWorldIntoTarget(crossPortalView.worldRenderInfo(), target, deltaTracker);
+                    crossPortalViewTarget = target;
+                }
+            }
 
             // GUI world views submitted during the last frame
             GuiPortalRendering._renderPendingTasks(deltaTracker);

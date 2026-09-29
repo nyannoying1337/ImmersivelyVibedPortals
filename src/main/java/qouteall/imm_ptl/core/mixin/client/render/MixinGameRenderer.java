@@ -75,12 +75,49 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
      * Portal animation and teleportation must be handled before the camera is updated,
      * so that the extracted render state is consistent with the teleported player.
      */
+    /**
+     * False while a vanilla dimension change is being handled: in 26.3 ClientPacketListener.handleRespawn
+     * renders a frame (the level loading screen) after the new level is set but before the player is moved
+     * into it (e.g. leaving the End through the exit portal). ImmPtl's per-frame logic must not run then.
+     */
+    @Unique
+    private boolean ip_isLevelStateConsistent() {
+        return minecraft.level != null && minecraft.player != null && minecraft.player.level() == minecraft.level;
+    }
+
+    /**
+     * Cross-portal view (third person camera behind a portal): replace the main level image with the
+     * destination rendered by PortalViewRenderer, before the hand and HUD are drawn.
+     */
+    @Inject(
+        method = "renderLevel",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/GameRenderer;render3dHud(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lnet/minecraft/client/renderer/state/OptionsRenderState;Z)V"
+        )
+    )
+    private void onBeforeRender3dHud(CallbackInfo ci) {
+        if (PortalViewRenderer.isRenderingPortalView()) {
+            return;
+        }
+        com.mojang.blaze3d.pipeline.TextureTarget crossView = PortalViewRenderer.getCrossPortalViewTarget();
+        if (crossView == null) {
+            return;
+        }
+        RenderTarget main = ((GameRenderer) (Object) this).mainRenderTarget();
+        int width = Math.min(crossView.width, main.width);
+        int height = Math.min(crossView.height, main.height);
+        var encoder = com.mojang.blaze3d.systems.RenderSystem.getDevice().createCommandEncoder();
+        encoder.copyTextureToTexture(crossView.getColorTexture(), main.getColorTexture(), 0, 0, 0, 0, 0, width, height);
+        encoder.copyTextureToTexture(crossView.getDepthTexture(), main.getDepthTexture(), 0, 0, 0, 0, 0, width, height);
+    }
+
     @Inject(method = "update", at = @At("HEAD"))
     private void onBeforeUpdate(DeltaTracker deltaTracker, CallbackInfo ci) {
         Profiler.get().push("ip_pre_total_render");
         IPGlobal.PRE_TOTAL_RENDER_TASK_LIST.processTasks();
         Profiler.get().pop();
-        if (minecraft.level == null || minecraft.player == null) {
+        if (!ip_isLevelStateConsistent()) {
             return;
         }
         Profiler.get().push("ip_pre_render");
@@ -107,7 +144,7 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
      */
     @Inject(method = "extract", at = @At("HEAD"))
     private void onBeforeExtract(DeltaTracker deltaTracker, boolean advanceGameTime, CallbackInfo ci) {
-        if (minecraft.isGameLoadFinished() && advanceGameTime && minecraft.level != null) {
+        if (minecraft.isGameLoadFinished() && advanceGameTime && ip_isLevelStateConsistent()) {
             Profiler.get().push("ip_portal_views");
             PortalViewRenderer.renderPortalViews(deltaTracker);
             Profiler.get().pop();

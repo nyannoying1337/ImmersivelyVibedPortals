@@ -66,6 +66,23 @@ public abstract class MixinClientPacketListener implements IEClientPlayNetworkHa
     
     @Shadow
     public abstract RegistryAccess.Frozen registryAccess();
+
+    /**
+     * A vanilla dimension change (e.g. leaving the End through the exit portal) creates the new ClientLevel
+     * with Minecraft.levelExtractor, which may be ImmPtl's extractor of the current dimension at this point.
+     * That extractor is released by the cleanup when the new level is set, which would leave the new level
+     * with a detached extractor. So give vanilla back its own renderer and extractor first.
+     */
+    @Inject(method = "handleRespawn", at = @At("HEAD"))
+    private void onHandleRespawn(net.minecraft.network.protocol.game.ClientboundRespawnPacket packet, CallbackInfo ci) {
+        net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
+        if (!minecraft.isSameThread() || minecraft.player == null) {
+            return;
+        }
+        if (packet.commonPlayerSpawnInfo().dimension() != minecraft.player.level().dimension()) {
+            qouteall.imm_ptl.core.ClientWorldLoader.switchToVanillaRendering();
+        }
+    }
     
     @Shadow
     protected abstract void enableChunkLight(LevelChunk chunk, int x, int z);
