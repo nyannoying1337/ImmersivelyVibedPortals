@@ -14,10 +14,21 @@ to **Minecraft 26.3 (Fabric)**. The original project stopped at Minecraft 1.21.1
 - Minecraft 26.3, Fabric Loader 0.19.5+, Fabric API 0.161.0+26.3, Java 25
 - DimLib and Cloth Config are bundled
 
-### Known issues / not ported yet
-- Sodium and Iris work. Shaderpacks are experimental: tested with Complementary Reimagined r5.9.3 and BSL v10.1.8 in the automated visual test, not in real gameplay yet
+### What works (checked by automated in-game tests)
+- See-through nether portals, walking through them seamlessly, in singleplayer and on a dedicated server
+- End portals: filling the frame, the End, the dragon fight's exit portal and the credits
+- Portals to far-away places of the same dimension, mirrors, portals inside portals
+- Global portals: world wrapping and dimension stacks; `/portal` commands like `make_portal`
+- Entities halfway through a portal are cut at the portal plane and show on the other side
+- Third-person view through portals; smooth camera turn after going through a rotated portal
+- Sodium (0.9.2+) and Iris (1.11.6+); shaderpacks checked: Complementary Reimagined, BSL
+- Both graphics backends (OpenGL and Vulkan); run the tests with `./gradlew runClientGameTest`
+
+### Known issues
+- Shaderpacks are experimental: checked in the automated test, not in real gameplay yet. Iris needs the OpenGL backend
 - Leashes of entities crossing a portal are not cut at the portal plane
-- Tested on the OpenGL and Vulkan backends with an automated visual test (`./gradlew runClientGameTest`)
+- Not tested in game yet: the portal wand, the portal helper, the command stick, custom portal generation (datapacks)
+- More in the [wiki's known issues](https://github.com/nyannoying1337/ImmersivelyVibedPortals/wiki/Known-Issues)
 
 ### What changed in the port
 Minecraft 26.x replaced its OpenGL renderer with a new graphics layer (OpenGL or Vulkan, no stencil buffer),
