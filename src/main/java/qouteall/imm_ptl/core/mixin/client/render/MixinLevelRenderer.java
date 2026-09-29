@@ -5,6 +5,8 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.SectionOcclusionGraph;
+import net.minecraft.client.renderer.ViewArea;
+import net.minecraft.core.SectionPos;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.ChunkLoadingRenderState;
@@ -23,6 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.render.EntityClipping;
 import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.VisibleSectionDiscovery;
+import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 
 /**
@@ -40,7 +43,9 @@ import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
  *     the ViewArea is not re-centered to the view camera and the section compile priority camera position
  *     is not changed (repositionCamera), the {@link SectionOcclusionGraph} is not updated
  *     (only its loaded chunk / empty section bookkeeping is), and translucent sections are not resorted.
- *     For views of other dimensions all of that runs normally (that dimension's renderer is only used by portal views).</li>
+ *     For views of other dimensions the graph is not updated either (views don't use it), translucent sections
+ *     are resorted normally, and the ViewArea is centered once per frame for all views of that renderer
+ *     (see {@link #ip_repositionForPortalViews}).</li>
  * </ul>
  * <p>
  * Hooks of 1.21.1 that were removed because the new design does not need them:
@@ -77,6 +82,32 @@ public abstract class MixinLevelRenderer {
     @Shadow
     @Final
     private SectionOcclusionGraph sectionOcclusionGraph;
+
+    @Shadow
+    private @Nullable ViewArea viewArea;
+
+    @Shadow
+    private @Nullable SectionRenderDispatcher sectionRenderDispatcher;
+
+    @Shadow
+    @Final
+    private net.minecraft.client.renderer.WorldBorderRenderer worldBorderRenderer;
+
+    // ViewArea centering of the portal views of another dimension (see ip_repositionForPortalViews)
+    @Unique
+    private static final int IP_MIN_VIEW_MARGIN = 4;
+
+    @Unique
+    private boolean ip_occlusionGraphStale = false;
+
+    @Unique
+    private int ip_viewFrameIndex = -1;
+    @Unique
+    private @Nullable SectionPos ip_viewAreaCenter;
+    @Unique
+    private int ip_viewMinX, ip_viewMaxX, ip_viewMinZ, ip_viewMaxZ, ip_viewCount;
+    @Unique
+    private int ip_lastFrameMinX, ip_lastFrameMaxX, ip_lastFrameMinZ, ip_lastFrameMaxZ, ip_lastFrameViewCount;
 
     // the lists used by the main view (the vanilla instances)
     @Unique
@@ -182,13 +213,86 @@ public abstract class MixinLevelRenderer {
     private void onRepositionCamera(CameraRenderState camera, CallbackInfo ci) {
         if (ip_isPortalViewWithMainLevelRenderer()) {
             ci.cancel();
+            return;
+        }
+        if (PortalViewRenderer.isRenderingPortalView()) {
+            ip_repositionForPortalViews(camera);
+            ci.cancel();
         }
     }
 
     /**
-     * Don't update the main view's occlusion graph from the portal view camera.
+     * The renderer of a dimension other than the main view's one is only used by portal views.
+     * Several views of it in one frame (e.g. several portals to different places of that dimension) would each
+     * re-center the ViewArea to their camera. Every re-centering resets the sections that move in the grid,
+     * so the sections at the edges would be reset and recompiled every view, and mostly not be compiled when
+     * they're rendered.
+     * Instead the ViewArea is centered once per frame, on the middle of the view cameras of the last frame,
+     * so that it stays put while the views don't move, and every view gets the part of its surroundings
+     * that is within the grid. (With one view, that's the view camera, like vanilla.)
+     * A view whose camera is too near the edge of that grid (less than {@link #IP_MIN_VIEW_MARGIN} sections)
+     * is rendered with the grid centered on its camera, like before.
+     */
+    @Unique
+    private void ip_repositionForPortalViews(CameraRenderState camera) {
+        if (viewArea == null || sectionRenderDispatcher == null) {
+            return;
+        }
+        SectionPos cameraSectionPos = SectionPos.of(camera.pos);
+
+        if (ip_viewFrameIndex != RenderStates.frameIndex) {
+            // first view of this renderer in this frame
+            boolean lastFrameHadViews = ip_viewFrameIndex == RenderStates.frameIndex - 1 && ip_viewCount > 0;
+            ip_lastFrameViewCount = lastFrameHadViews ? ip_viewCount : 0;
+            ip_lastFrameMinX = ip_viewMinX;
+            ip_lastFrameMaxX = ip_viewMaxX;
+            ip_lastFrameMinZ = ip_viewMinZ;
+            ip_lastFrameMaxZ = ip_viewMaxZ;
+            ip_viewFrameIndex = RenderStates.frameIndex;
+            ip_viewCount = 0;
+
+            if (ip_lastFrameViewCount > 1) {
+                ip_viewAreaCenter = SectionPos.of(
+                    Math.floorDiv(ip_lastFrameMinX + ip_lastFrameMaxX, 2),
+                    cameraSectionPos.y(),
+                    Math.floorDiv(ip_lastFrameMinZ + ip_lastFrameMaxZ, 2)
+                );
+            }
+            else {
+                ip_viewAreaCenter = cameraSectionPos;
+            }
+        }
+
+        int maxOffset = Math.max(viewArea.getViewDistance() - IP_MIN_VIEW_MARGIN, 0);
+        SectionPos center = Math.abs(cameraSectionPos.x() - ip_viewAreaCenter.x()) <= maxOffset
+            && Math.abs(cameraSectionPos.z() - ip_viewAreaCenter.z()) <= maxOffset
+            ? ip_viewAreaCenter : cameraSectionPos;
+        if (viewArea.repositionCamera(center)) {
+            worldBorderRenderer.invalidate();
+        }
+
+        if (ip_viewCount == 0) {
+            ip_viewMinX = ip_viewMaxX = cameraSectionPos.x();
+            ip_viewMinZ = ip_viewMaxZ = cameraSectionPos.z();
+        }
+        else {
+            ip_viewMinX = Math.min(ip_viewMinX, cameraSectionPos.x());
+            ip_viewMaxX = Math.max(ip_viewMaxX, cameraSectionPos.x());
+            ip_viewMinZ = Math.min(ip_viewMinZ, cameraSectionPos.z());
+            ip_viewMaxZ = Math.max(ip_viewMaxZ, cameraSectionPos.z());
+        }
+        ip_viewCount++;
+
+        // compile task priority
+        sectionRenderDispatcher.setCameraPosition(camera.pos);
+    }
+
+    /**
+     * Don't update the occlusion graph from a portal view camera (views use VisibleSectionDiscovery).
      * The loaded chunk and empty section changes are still applied,
      * because the view's extraction consumed them from the ClientChunkCache.
+     * The graph of another dimension's renderer is then not up to date when the player goes to that dimension
+     * (it becomes the main view's renderer), so it's rebuilt at its next main view update.
      */
     @WrapOperation(
         method = "render",
@@ -201,7 +305,11 @@ public abstract class MixinLevelRenderer {
         SectionOcclusionGraph graph, CameraRenderState camera, int fov,
         ChunkLoadingRenderState chunkLoadingRenderState, Operation<Void> original
     ) {
-        if (ip_isPortalViewWithMainLevelRenderer()) {
+        // (portal views of other dimensions don't use the graph either, see onGetSectionOcclusionGraph)
+        if (PortalViewRenderer.isRenderingPortalView()) {
+            if (!ip_isPortalViewWithMainLevelRenderer()) {
+                ip_occlusionGraphStale = true;
+            }
             graph.updateLoadedChunks(
                 chunkLoadingRenderState.addedLoadedChunks, chunkLoadingRenderState.removedLoadedChunks
             );
@@ -209,6 +317,10 @@ public abstract class MixinLevelRenderer {
                 chunkLoadingRenderState.addedEmptySections, chunkLoadingRenderState.removedEmptySections
             );
             return;
+        }
+        if (ip_occlusionGraphStale) {
+            ip_occlusionGraphStale = false;
+            graph.invalidate();
         }
         original.call(graph, camera, fov, chunkLoadingRenderState);
     }

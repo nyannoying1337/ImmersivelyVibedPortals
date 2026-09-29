@@ -66,6 +66,21 @@ Everything happens on the render thread in order, so the per-dimension `LevelRen
 - Visible sections for a view come from IP's own synchronous BFS (`VisibleSectionDiscovery`, ported), injected at `LevelExtractor.applyFrustum` /
   `SectionOcclusionGraph.addSectionsInFrustum` while in a view.
 
+### Entities crossing a portal
+An entity halfway through a portal is clipped by the portal plane: the original by the outer clipping plane
+(the part that went through is hidden), its projection on the other side by the inner one. There is no per-entity
+clip plane on the GPU (entities are batched per render type into one vertex buffer), so this is done on the CPU
+(`EntityClipping`): extracted render states get their planes, the submits made while such a state is submitted
+are tagged, and `RenderTypeFeatureRenderer` builds tagged submits with a vertex consumer that cuts every quad by
+the planes. Works the same with Sodium and Iris. Lines (leashes) and text are not clipped.
+
+### ViewArea of other dimensions
+The renderer of a dimension other than the main view's one is only used by portal views. Its ViewArea (a fixed grid
+around a center) is centered once per frame on the middle of the last frame's view cameras, instead of on every view
+camera: re-centering resets the sections that move in the grid, so several views of different places would reset
+and recompile the grid edges every view. A view too near the grid edge gets its own center. Its occlusion graph is
+not updated in views (views use `VisibleSectionDiscovery`); it's rebuilt when that renderer becomes the main one.
+
 ### Per-view buffer instances
 - Fog: `GameRenderer.fogRenderer` is swapped to a pooled `FogRenderer` per view index; call `endFrame()` on all pooled instances each frame.
 - Lightmap: one `Lightmap` per dimension; render it once per frame per dimension (first view that needs it).
@@ -140,6 +155,10 @@ Front clipping for pack terrain programs: Iris compiles them from its own genera
 `MixinIrisTransformPatcher` post-processes the output of `TransformPatcher.patchSodium` (non-shadow programs):
 the plane is added to Iris' `u_Globals` declaration (the buffer is Sodium's, which carries it), the clip distance
 is computed from `getVertexPosition()` after the pack's `main`, and the fragment shader discards.
-Not clipped yet: pack programs for entities, block entities, particles and the hand (`patchVanilla`).
+Pack programs of vanilla render types (entities, block entities, particles, clouds...) are post-processed the same way
+after `TransformPatcher.patchVanilla`: the plane is added to Iris' `iris_Projection` block (bound to the vanilla
+Projection buffer, which carries it), the view position is `ModelViewMat * (Position + ModelOffset)`.
+Shadow, sky and hand programs are left alone. Programs missing from the pack use Iris' own fallback shaders, which are
+not clipped. The test pack has `gbuffers_textured_lit` (entities fall back to it) for the `entity_front_ow` shot.
 Run the visual test with the test shaderpack (`src/gametest/resources/immptl_test_shaderpack`, magenta border):
 `./gradlew runClientGameTest -PwithShaders` (OpenGL only; Iris crashes when Vulkan is forced).
