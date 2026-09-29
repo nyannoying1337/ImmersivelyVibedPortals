@@ -84,6 +84,15 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         if (Boolean.getBoolean("imm_ptl.featureTest.skip")) {
             return;
         }
+        // gradle -Pimm_ptl.featureTest.only=dimstack: only the dimension stack scene
+        if ("dimstack".equals(System.getProperty("imm_ptl.featureTest.only"))) {
+            dimStackSection(ctx);
+            writeReport();
+            if (!failures.isEmpty()) {
+                throw new AssertionError(failures.size() + " feature checks failed:\n" + String.join("\n", failures));
+            }
+            return;
+        }
 
         try (TestSingleplayerContext sp = ctx.worldBuilder()
             .adjustSettings(s -> s.setGameMode(WorldCreationUiState.SelectedGameMode.CREATIVE))
@@ -119,26 +128,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
 
         section("migration of old global portal files", () -> migration(ctx));
 
-        section("dimension stack when creating a world (UI)", () -> {
-            try {
-                dimStackWorldCreation(ctx);
-            }
-            finally {
-                // back to the title screen for the next section, also after a failure
-                ctx.runOnClient(mc -> {
-                    if (mc.level != null) {
-                        mc.disconnectFromWorld(net.minecraft.network.chat.Component.empty());
-                    }
-                    else if (!(mc.gui.screen() instanceof TitleScreen)) {
-                        mc.gui.setScreen(new TitleScreen());
-                    }
-                });
-                ctx.waitForScreen(TitleScreen.class);
-                // the integrated server stops in the background; the test must not end while it runs
-                ctx.waitFor(mc -> mc.getSingleplayerServer() == null
-                    && !net.fabricmc.fabric.impl.client.gametest.threading.ThreadingImpl.isServerRunning, 1200);
-            }
-        });
+        dimStackSection(ctx);
 
         // Multiplayer: a local dedicated server in the test's run directory (build/run/clientGameTest).
         // It needs eula=true in its eula.txt (the Minecraft EULA; the project owner accepted it for this
@@ -172,6 +162,35 @@ public class FeatureSmokeTest implements FabricClientGameTest {
     }
 
     // ---- scenes ----
+
+    private void dimStackSection(ClientGameTestContext ctx) {
+        section("dimension stack when creating a world (UI)", () -> {
+            try {
+                dimStackWorldCreation(ctx);
+            }
+            finally {
+                // back to the title screen for the next section, also after a failure
+                ctx.runOnClient(mc -> {
+                    if (mc.level != null) {
+                        mc.disconnectFromWorld(net.minecraft.network.chat.Component.empty());
+                    }
+                    else if (!(mc.gui.screen() instanceof TitleScreen)) {
+                        mc.gui.setScreen(new TitleScreen());
+                    }
+                });
+                ctx.waitForScreen(TitleScreen.class);
+                // the integrated server stops in the background; the test must not end while it runs
+                ctx.waitFor(mc -> mc.getSingleplayerServer() == null
+                    && !net.fabricmc.fabric.impl.client.gametest.threading.ThreadingImpl.isServerRunning, 1200);
+                ctx.runOnClient(mc -> {
+                    if (!(mc.gui.screen() instanceof TitleScreen)) {
+                        mc.gui.setScreen(new TitleScreen());
+                    }
+                });
+                ctx.waitForScreen(TitleScreen.class);
+            }
+        });
+    }
 
     /**
      * Light an obsidian frame with fire: the mod generates a see-through portal and its destination frame
@@ -604,6 +623,31 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             detail.contains("minecraft:the_nether") && detail.contains("skyland"), detail);
         ctx.waitTicks(40);
         screenshot(ctx, "dim_stack_world");
+
+        // the stack's portals are at the build limits: the sky above and the bottom of the world.
+        // Each pose is shot twice, 3 ticks apart, into a/ and b/: large differences with a still camera = flicker.
+        runIntegratedServerCommand(ctx, "time set noon");
+        runIntegratedServerCommand(ctx, "gamerule doDaylightCycle false");
+        runIntegratedServerCommand(ctx, "fill -4 -63 -4 4 -52 4 minecraft:air");
+        for (String[] pose : new String[][]{
+            {"dim_stack_up_from_surface", "0 100 0 0 -70"},
+            {"dim_stack_up_high", "0 290 0 0 -60"},
+            {"dim_stack_up_close", "0 316 0 0 -30"},
+            {"dim_stack_level_under_ceiling", "0 318 0 0 0"},
+            {"dim_stack_horizontal_high", "0 250 0 0 0"},
+            {"dim_stack_down_bottom", "0 -58 0 0 70"},
+            {"dim_stack_level_over_floor", "0 -62 0 0 0"},
+        }) {
+            runIntegratedServerCommand(ctx, "tp @p " + pose[1]);
+            ctx.runOnClient(mc -> {
+                mc.player.getAbilities().flying = true;
+                mc.player.onUpdateAbilities();
+            });
+            ctx.waitTicks(100);
+            ctx.takeScreenshot(TestScreenshotOptions.of(pose[0]).disableCounterPrefix().withDestinationDir(out.resolve("a")));
+            ctx.waitTicks(3);
+            ctx.takeScreenshot(TestScreenshotOptions.of(pose[0]).disableCounterPrefix().withDestinationDir(out.resolve("b")));
+        }
     }
 
     /**
@@ -823,6 +867,15 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         });
         check("portal commands: set_portal_size, set_portal_destination, complete_bi_way_bi_faced_portal, "
             + "eradicate_portal_cluster, convert_normal_portal_to_global_portal have their effects", effects.isEmpty(), effects);
+    }
+
+    // for a world created through the UI (no TestServerContext)
+    private static void runIntegratedServerCommand(ClientGameTestContext ctx, String command) {
+        ctx.runOnClient(mc -> {
+            var server = mc.getSingleplayerServer();
+            server.execute(() -> server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command));
+        });
+        ctx.waitTicks(2);
     }
 
     private static ServerPlayer serverPlayer(net.minecraft.server.MinecraftServer s) {

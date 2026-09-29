@@ -188,8 +188,8 @@ public class DimStackScreen extends Screen {
             ),
             GuiHelper.blankSpace(5),
             new GuiHelper.LayoutElement(false, 1, (from, to) -> {
-                dimListWidget.setSize(width, to - from);
-                dimListWidget.setPosition(0, from);
+                // (also positions the rows; the list was created before the screen had a size)
+                dimListWidget.updateSizeAndPosition(width, to - from, 0, from);
             }),
             GuiHelper.blankSpace(5),
             new GuiHelper.LayoutElement(true, 20, (from, to) -> {

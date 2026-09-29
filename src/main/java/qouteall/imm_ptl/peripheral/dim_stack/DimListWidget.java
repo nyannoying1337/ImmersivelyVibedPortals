@@ -79,11 +79,6 @@ public class DimListWidget extends AbstractSelectionList<DimEntryWidget> {
     }
     
     @Override
-    protected int scrollBarX() {
-        return (width - ROW_WIDTH) / 2 + ROW_WIDTH;
-    }
-    
-    @Override
     protected void extractListBackground(GuiGraphicsExtractor guiGraphics) {
         // don't render background
     }
