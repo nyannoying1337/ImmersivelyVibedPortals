@@ -121,10 +121,8 @@ public class CrossPortalEntityRenderer {
         EntityClipping.setStatePlanes(state, planes.toArray(Plane[]::new));
     }
 
+    // (also with Iris: the clipping is done on the CPU, independent of the shaderpack)
     private static boolean isCrossPortalRenderingEnabled() {
-        if (IrisInterface.invoker.isIrisPresent()) {
-            return false;
-        }
         return IPGlobal.correctCrossPortalEntityRendering;
     }
 

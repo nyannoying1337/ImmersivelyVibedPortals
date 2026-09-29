@@ -126,6 +126,52 @@ public class PortalClipping {
      */
     public static @Nullable java.util.Map<String, String> transformIrisSodiumProgram(java.util.Map<String, String> sources) {
         String vertex = sources.get("VERTEX");
+        if (vertex == null || !vertex.contains("getVertexPosition") || !vertex.contains("u_ModelViewMatrix")) {
+            return null;
+        }
+        return transformIrisProgram(
+            sources, SODIUM_GLOBALS_LAST_FIELD_PATTERN,
+            "u_ModelViewMatrix * getVertexPosition()"
+        );
+    }
+
+    // the vanilla Projection block as Iris declares it (IrisBindings binds it to the vanilla buffer, which has the plane)
+    private static final Pattern IRIS_PROJECTION_BLOCK_PATTERN =
+        Pattern.compile("(uniform\\s+iris_Projection\\s*\\{\\s*mat4\\s+iris_ProjMat\\s*;)");
+
+    /**
+     * Like {@link #transformIrisSodiumProgram}, for the shaderpack programs of vanilla render types
+     * (entities, block entities, particles, clouds...). The plane comes from the vanilla Projection block
+     * (iris_Projection), the view space position is computed like the vanilla shaders do.
+     * Shadow and sky programs are not transformed.
+     *
+     * @param name the Iris shader key name (e.g. "entities_cutout", "shadow_entities_cutout")
+     */
+    public static @Nullable java.util.Map<String, String> transformIrisVanillaProgram(
+        String name, java.util.Map<String, String> sources
+    ) {
+        if (name.startsWith("shadow") || name.contains("_shadow") || name.startsWith("sky") || name.startsWith("hand")) {
+            return null;
+        }
+        String vertex = sources.get("VERTEX");
+        if (vertex == null || !vertex.contains("iris_Position") || !vertex.contains("iris_transforms")) {
+            return null;
+        }
+        return transformIrisProgram(
+            sources, IRIS_PROJECTION_BLOCK_PATTERN,
+            "iris_transforms.ModelViewMat * vec4(iris_Position + iris_transforms.ModelOffset, 1.0)"
+        );
+    }
+
+    /**
+     * @param blockFieldPattern matches the last field of the uniform block that the plane is appended to
+     *                          (group 1 is kept)
+     * @param viewPosExpression the view space position of the vertex (vec4)
+     */
+    private static @Nullable java.util.Map<String, String> transformIrisProgram(
+        java.util.Map<String, String> sources, Pattern blockFieldPattern, String viewPosExpression
+    ) {
+        String vertex = sources.get("VERTEX");
         String fragment = sources.get("FRAGMENT");
         if (vertex == null || fragment == null) {
             return null;
@@ -137,8 +183,7 @@ public class PortalClipping {
             }
         }
         if (vertex.contains("immptl_ClipDistance")
-            || !vertex.contains("getVertexPosition") || !vertex.contains("u_ModelViewMatrix")
-            || !SODIUM_GLOBALS_LAST_FIELD_PATTERN.matcher(vertex).find()
+            || !blockFieldPattern.matcher(vertex).find()
             || !MAIN_PATTERN.matcher(vertex).find() || !MAIN_PATTERN.matcher(fragment).find()
         ) {
             return null;
@@ -148,7 +193,7 @@ public class PortalClipping {
         for (var e : sources.entrySet()) {
             String source = e.getValue();
             if (source != null) {
-                source = SODIUM_GLOBALS_LAST_FIELD_PATTERN.matcher(source).replaceFirst("$1\n    vec4 ImmPtlClipPlane;");
+                source = blockFieldPattern.matcher(source).replaceFirst("$1\n    vec4 ImmPtlClipPlane;");
             }
             result.put(e.getKey(), source);
         }
@@ -160,7 +205,7 @@ public class PortalClipping {
         v = insertBeforeMain(v, (modern ? "out" : "varying") + " float immptl_ClipDistance;\n");
         v = MAIN_PATTERN.matcher(v).replaceFirst("void immptl_originalMain() {");
         v = v + "\nvoid main() {\n    immptl_originalMain();\n"
-            + "    immptl_ClipDistance = dot(ImmPtlClipPlane, u_ModelViewMatrix * getVertexPosition());\n}\n";
+            + "    immptl_ClipDistance = dot(ImmPtlClipPlane, " + viewPosExpression + ");\n}\n";
         result.put("VERTEX", v);
 
         String f = result.get("FRAGMENT");

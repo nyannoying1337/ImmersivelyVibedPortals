@@ -116,9 +116,11 @@ public class ClientTeleportationManager {
     
     public static void manageTeleportation(boolean isTicking_) {
         if (IPGlobal.disableTeleportation) {
+            // otherwise the movement since teleportation was disabled would be checked when it's enabled again
+            lastPlayerEyePos = null;
             return;
         }
-        
+
         isTicking = isTicking_;
         
         teleportationCounter++;

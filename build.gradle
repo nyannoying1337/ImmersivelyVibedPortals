@@ -73,7 +73,6 @@ sourceSets.main.java {
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/ExperimentalIrisPortalRenderer.java'
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/IrisPortalRenderer.java'
     exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/IrisCompatibilityPortalRenderer.java'
-    exclude 'qouteall/imm_ptl/core/compat/iris_compatibility/OnIrisPresent.java'
     exclude 'qouteall/imm_ptl/core/compat/OnGravityChangerPresent.java'
 }
 

@@ -287,6 +287,11 @@ public class PortalVisualTest implements FabricClientGameTest {
      * Behind (looking +Z through the other face of the portal): no cow at all. The part that went through
      * is in the overworld, the rest is behind the portal surface. Cow parts in front of the portal are a bug
      * (the part of the entity that went through is not clipped).
+     * <p>
+     * Then a cow in the overworld destination frame, facing +Z, its head through the plane z=40.5 (towards the
+     * camera of the portal view). Cross-portal entity rendering is turned off for this shot, so only the
+     * portal view's clip plane cuts the cow. Front (entity_front_ow): its body inside the portal, no head.
+     * A head inside the portal means the entity shader (vanilla, or the shaderpack's entity program) is not clipped.
      */
     void shootEntityClipping(ClientGameTestContext ctx, TestServerContext srv) {
         srv.runCommand(NETHER + "summon minecraft:cow 1.0 65.0 0.6 {NoAI:1b,Silent:1b,Rotation:[180f,0f],Tags:[\"immptl_test\"]}");
@@ -300,11 +305,27 @@ public class PortalVisualTest implements FabricClientGameTest {
         )) {
             shoot(ctx, srv, p);
         }
-        // remove it at once (a killed mob stays for the death animation and pushes the player in the walk sequence)
-        srv.runOnServer(s -> s.getLevel(Level.NETHER)
-            .getEntitiesOfClass(Entity.class, FRAME, e -> e.entityTags().contains("immptl_test"))
-            .forEach(Entity::discard));
+        removeTestEntities(srv);
+
+        srv.runCommand("summon minecraft:cow 1.0 -60.0 40.3 {NoAI:1b,Silent:1b,Rotation:[0f,0f],Tags:[\"immptl_test\"]}");
+        ctx.runOnClient(mc -> IPGlobal.correctCrossPortalEntityRendering = false);
+        ctx.waitTicks(20);
+        shoot(ctx, srv, new Pose("entity_front_ow", 1.0, 65.0, 3.5, 180, 10));
+        ctx.runOnClient(mc -> IPGlobal.correctCrossPortalEntityRendering = true);
+        removeTestEntities(srv);
         ctx.waitTicks(10);
+    }
+
+    // remove them at once (a killed mob stays for the death animation and pushes the player in the walk sequence)
+    static void removeTestEntities(TestServerContext srv) {
+        srv.runOnServer(s -> {
+            s.getLevel(Level.NETHER)
+                .getEntitiesOfClass(Entity.class, FRAME, e -> e.entityTags().contains("immptl_test"))
+                .forEach(Entity::discard);
+            s.getLevel(Level.OVERWORLD)
+                .getEntitiesOfClass(Entity.class, new AABB(-2, -62, 38, 4, -55, 45), e -> e.entityTags().contains("immptl_test"))
+                .forEach(Entity::discard);
+        });
     }
 
     static void waitIdle(ClientGameTestContext ctx) {

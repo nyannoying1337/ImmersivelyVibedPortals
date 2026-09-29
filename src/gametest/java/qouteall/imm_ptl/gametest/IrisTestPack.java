@@ -18,7 +18,9 @@ public class IrisTestPack {
     static final String NAME = "ImmPtlTestPack";
     static final List<String> FILES = List.of(
         "shaders/final.vsh", "shaders/final.fsh",
-        "shaders/gbuffers_terrain.vsh", "shaders/gbuffers_terrain.fsh"
+        "shaders/gbuffers_terrain.vsh", "shaders/gbuffers_terrain.fsh",
+        // (entities, block entities, particles... fall back to it)
+        "shaders/gbuffers_textured_lit.vsh", "shaders/gbuffers_textured_lit.fsh"
     );
     
     static void enable() {
