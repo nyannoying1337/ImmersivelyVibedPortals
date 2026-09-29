@@ -44,9 +44,11 @@ public class SelectDimensionScreen extends Screen {
         
         Consumer<DimEntryWidget> callback = w -> dimListWidget.setSelected(w);
         
-        for (ResourceKey<Level> dim : dimensionList) {
-            dimListWidget.children().add(new DimEntryWidget(dim, dimListWidget, callback, new DimStackEntry(dim)));
-        }
+        dimListWidget.mutateEntries(list -> {
+            for (ResourceKey<Level> dim : dimensionList) {
+                list.add(new DimEntryWidget(dim, dimListWidget, callback, new DimStackEntry(dim)));
+            }
+        });
     
         confirmButton = (Button) addRenderableWidget(Button
             .builder(

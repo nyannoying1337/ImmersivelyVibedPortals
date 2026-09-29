@@ -210,6 +210,7 @@ public class PortalViewRenderer {
         catch (Throwable e) {
             // don't crash the game because of portal rendering
             LIMITED_LOGGER.invoke(() -> LOGGER.error("[ImmPtl] Error rendering portal views", e));
+            recoverFromViewRenderingError();
         }
         finally {
             currentNode = null;
@@ -303,6 +304,22 @@ public class PortalViewRenderer {
             worldRenderInfo.overwriteCameraTransformation,
             client.gameRenderer.mainCamera(), deltaTracker
         );
+    }
+
+    /**
+     * A view that threw in the middle of LevelRenderer.render leaves shared render state behind:
+     * the feature render dispatcher's single prepared frame stays "in use", so the main view's render would throw
+     * "PreparedFrame already in use" and crash the game.
+     */
+    private static void recoverFromViewRenderingError() {
+        try {
+            ((qouteall.imm_ptl.core.mixin.client.render.IEFeatureRenderDispatcher)
+                client.gameRenderer.featureRenderDispatcher()).ip_getPreparedFrame().close();
+        }
+        catch (IllegalStateException ignored) {
+            // it was not in use
+        }
+        RenderSystem.isRenderingLevel = false;
     }
 
     private static List<Portal> collectVisiblePortals(Frustum frustum) {

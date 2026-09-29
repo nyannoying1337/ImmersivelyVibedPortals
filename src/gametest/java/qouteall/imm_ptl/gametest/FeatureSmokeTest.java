@@ -106,6 +106,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             section("breakable mirror", () -> breakableMirror(ctx, srv));
             section("portal helper", () -> portalHelper(ctx, srv));
             section("portal wand", () -> portalWand(ctx, srv));
+            section("portal commands", () -> portalCommands(ctx, srv));
 
             // global portals for the migration check below
             srv.runCommand("portal global create_inward_wrapping -40 -40 40 40");
@@ -117,6 +118,27 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         writeTestDatapack();
 
         section("migration of old global portal files", () -> migration(ctx));
+
+        section("dimension stack when creating a world (UI)", () -> {
+            try {
+                dimStackWorldCreation(ctx);
+            }
+            finally {
+                // back to the title screen for the next section, also after a failure
+                ctx.runOnClient(mc -> {
+                    if (mc.level != null) {
+                        mc.disconnectFromWorld(net.minecraft.network.chat.Component.empty());
+                    }
+                    else if (!(mc.gui.screen() instanceof TitleScreen)) {
+                        mc.gui.setScreen(new TitleScreen());
+                    }
+                });
+                ctx.waitForScreen(TitleScreen.class);
+                // the integrated server stops in the background; the test must not end while it runs
+                ctx.waitFor(mc -> mc.getSingleplayerServer() == null
+                    && !net.fabricmc.fabric.impl.client.gametest.threading.ThreadingImpl.isServerRunning, 1200);
+            }
+        });
 
         // Multiplayer: a local dedicated server in the test's run directory (build/run/clientGameTest).
         // It needs eula=true in its eula.txt (the Minecraft EULA; the project owner accepted it for this
@@ -524,6 +546,283 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         check("rotating portal: the camera turns upright after the animation", upLater > 0.99,
             String.format(Locale.ROOT, "camera up.y %.3f", upLater));
         screenshot(ctx, "rotating_portal_later");
+    }
+
+    /**
+     * The dimension stack settings when creating a world, through the UI: the create world screen's "More" tab
+     * has the dimension stack button (MixinCreateWorldScreenMoreTab_CVB); in the dimension stack screen the stack
+     * is enabled (default entries: bright void, bright skyland, overworld, nether) and confirmed; then the world is
+     * created. The new world must have the stack's global portals (overworld connected to the dimensions above
+     * and below).
+     */
+    private void dimStackWorldCreation(ClientGameTestContext ctx) {
+        ctx.runOnClient(mc -> net.minecraft.client.gui.screens.worldselection.CreateWorldScreen.openFresh(
+            mc, () -> mc.gui.setScreen(new TitleScreen())));
+        ctx.waitForScreen(net.minecraft.client.gui.screens.worldselection.CreateWorldScreen.class);
+        ctx.runOnClient(mc -> {
+            var screen = (net.minecraft.client.gui.screens.worldselection.CreateWorldScreen) mc.gui.screen();
+            screen.getUiState().setGameMode(WorldCreationUiState.SelectedGameMode.CREATIVE);
+            try {
+                var field = net.minecraft.client.gui.screens.worldselection.CreateWorldScreen.class
+                    .getDeclaredField("tabNavigationBar");
+                field.setAccessible(true);
+                // tabs: game, world, more
+                ((net.minecraft.client.gui.components.tabs.TabNavigationBar) field.get(screen)).selectTab(2, false);
+            }
+            catch (ReflectiveOperationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        ctx.waitTick();
+        ctx.clickScreenButton("imm_ptl.altius_screen_button");
+        ctx.waitForScreen(qouteall.imm_ptl.peripheral.dim_stack.DimStackScreen.class);
+        ctx.clickScreenButton("imm_ptl.altius_toggle_false"); // enable
+        ctx.waitTicks(2);
+        screenshot(ctx, "dim_stack_screen");
+        ctx.clickScreenButton("imm_ptl.finish");
+        ctx.waitForScreen(net.minecraft.client.gui.screens.worldselection.CreateWorldScreen.class);
+        int entries = ctx.computeOnClient(mc -> {
+            var info = qouteall.imm_ptl.peripheral.dim_stack.DimStackManagement.dimStackToApply;
+            return info == null ? -1 : info.entries.size();
+        });
+        check("dim stack: the screen's result is set for the new world", entries == 4, "entries " + entries);
+
+        ctx.clickScreenButton("selectWorld.create");
+        boolean joined = waitFor(ctx, 2400, () -> ctx.computeOnClient(mc ->
+            mc.level != null && mc.player != null && mc.gui.screen() == null));
+        check("dim stack: the world was created and joined", joined,
+            ctx.computeOnClient(mc -> "screen " + (mc.gui.screen() == null ? "none" : mc.gui.screen().getClass().getSimpleName())));
+        if (!joined) {
+            return;
+        }
+        boolean portals = waitFor(ctx, 200, () -> ctx.computeOnClient(mc ->
+            GlobalPortalStorage.getGlobalPortals(mc.level).size() >= 2));
+        String detail = ctx.computeOnClient(mc -> GlobalPortalStorage.getGlobalPortals(mc.level).stream()
+            .map(p -> p.getDestDim().identifier().toString()).toList().toString());
+        check("dim stack: the overworld has the stack's portals to the dimensions above and below", portals, detail);
+        check("dim stack: they lead to the nether and the bright skyland",
+            detail.contains("minecraft:the_nether") && detail.contains("skyland"), detail);
+        ctx.waitTicks(40);
+        screenshot(ctx, "dim_stack_world");
+    }
+
+    /**
+     * Runs a command on the server as the given entity and returns its messages.
+     * An exception inside the command shows as the "command.failed" message.
+     */
+    private static List<net.minecraft.network.chat.Component> runCapturing(
+        net.minecraft.server.MinecraftServer s, net.minecraft.world.entity.Entity executor, String command
+    ) {
+        List<net.minecraft.network.chat.Component> messages = new ArrayList<>();
+        net.minecraft.commands.CommandSource recorder = new net.minecraft.commands.CommandSource() {
+            @Override public void sendSystemMessage(net.minecraft.network.chat.Component message) { messages.add(message); }
+            @Override public boolean acceptsSuccess() { return true; }
+            @Override public boolean acceptsFailure() { return true; }
+            @Override public boolean shouldInformAdmins() { return false; }
+        };
+        var source = s.createCommandSourceStack().withSource(recorder).withEntity(executor)
+            .withPosition(executor.position()).withLevel((ServerLevel) executor.level());
+        s.getCommands().performPrefixedCommand(source, command);
+        return messages;
+    }
+
+    private static boolean isTranslation(net.minecraft.network.chat.Component c, String keyPrefix) {
+        return c.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents t
+            && t.getKey().startsWith(keyPrefix);
+    }
+
+    // a test portal at (800.5, y + 2, 800.5) facing +Z, 2 x 3, leading 20 blocks to +X
+    private static Portal spawnCommandTestPortal(net.minecraft.server.MinecraftServer s, int y) {
+        ServerLevel level = s.overworld();
+        Portal p = Portal.ENTITY_TYPE.create(level, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+        p.setOriginPos(new Vec3(800.5, y + 2, 800.5));
+        p.setOrientationAndSize(new Vec3(1, 0, 0), new Vec3(0, 1, 0), 2, 3);
+        p.setDestinationDimension(Level.OVERWORLD);
+        p.setDestination(new Vec3(820.5, y + 2, 800.5));
+        qouteall.imm_ptl.core.McHelper.spawnServerEntity(p);
+        return p;
+    }
+
+    private static void removeCommandTestPortals(net.minecraft.server.MinecraftServer s) {
+        for (ServerLevel level : s.getAllLevels()) {
+            level.getEntitiesOfClass(Portal.class, new AABB(700, -64, 700, 900, 320, 900)).forEach(e -> e.discard());
+            for (Portal global : List.copyOf(GlobalPortalStorage.getGlobalPortals(level))) {
+                qouteall.imm_ptl.core.api.PortalAPI.removeGlobalPortal(level, global);
+            }
+        }
+    }
+
+    // an argument value for a command node: the type's first example, or a value for types without examples
+    private static String sampleArgument(com.mojang.brigadier.tree.ArgumentCommandNode<?, ?> node) {
+        var type = node.getType();
+        if (type instanceof net.minecraft.commands.arguments.DimensionArgument) {
+            return "minecraft:overworld";
+        }
+        if (type instanceof net.minecraft.commands.arguments.EntityArgument) {
+            return "@s";
+        }
+        if (type instanceof com.mojang.brigadier.arguments.IntegerArgumentType t) {
+            return String.valueOf(Math.min(Math.max(2, t.getMinimum()), t.getMaximum()));
+        }
+        if (type instanceof com.mojang.brigadier.arguments.DoubleArgumentType t) {
+            return String.valueOf(Math.min(Math.max(2.0, t.getMinimum()), t.getMaximum()));
+        }
+        if (type instanceof com.mojang.brigadier.arguments.FloatArgumentType t) {
+            return String.valueOf(Math.min(Math.max(2.0f, t.getMinimum()), t.getMaximum()));
+        }
+        var examples = type.getExamples();
+        if (!examples.isEmpty()) {
+            return examples.iterator().next();
+        }
+        if (type instanceof com.mojang.brigadier.arguments.StringArgumentType) {
+            return "test";
+        }
+        if (type instanceof net.minecraft.commands.arguments.ComponentArgument) {
+            return "\"test\"";
+        }
+        return "1";
+    }
+
+    private static void collectCommands(
+        com.mojang.brigadier.tree.CommandNode<net.minecraft.commands.CommandSourceStack> node,
+        String prefix, List<String> out
+    ) {
+        for (var child : node.getChildren()) {
+            String part = child instanceof com.mojang.brigadier.tree.LiteralCommandNode<?> literal
+                ? literal.getLiteral()
+                : sampleArgument((com.mojang.brigadier.tree.ArgumentCommandNode<?, ?>) child);
+            String command = prefix + " " + part;
+            if (child.getCommand() != null) {
+                out.add(command);
+            }
+            if (child.getRedirect() == null) {
+                collectCommands(child, command, out);
+            }
+        }
+    }
+
+    /**
+     * Every executable form of /portal (except the debug subtree), with the example values of its argument types,
+     * run as a fresh test portal. No command may throw. (Commands rejected because an example value doesn't fit,
+     * or because they need a player, are listed in portal_commands.txt, not failed.)
+     * Then a few commands with their effects checked.
+     */
+    private void portalCommands(ClientGameTestContext ctx, TestServerContext srv) {
+        int y = groundY(srv, Level.OVERWORLD, 800, 800);
+        List<String> commands = srv.computeOnServer(s -> {
+            var root = s.getCommands().getDispatcher().getRoot().getChild("portal");
+            List<String> out = new ArrayList<>();
+            for (var child : root.getChildren()) {
+                if (child.getName().equals("debug")) {
+                    continue;
+                }
+                List<String> sub = new ArrayList<>();
+                if (child.getCommand() != null) {
+                    sub.add("portal " + child.getName());
+                }
+                collectCommands(child, "portal " + child.getName(), sub);
+                out.addAll(sub);
+            }
+            return out;
+        });
+
+        StringBuilder log = new StringBuilder();
+        List<String> threw = new ArrayList<>();
+        int rejected = 0;
+        for (String command : commands) {
+            String outcome = srv.computeOnServer(s -> {
+                removeCommandTestPortals(s);
+                Portal portal = spawnCommandTestPortal(s, y);
+                var messages = runCapturing(s, portal, command);
+                String asPortal = messages.stream().map(m -> m.getString()).reduce("", (a, b) -> a + b);
+                if (asPortal.contains("invoked by player") || asPortal.contains("A player is required")
+                    || asPortal.contains("No player was found")) {
+                    // as the player standing in front of the portal, looking at it
+                    ServerPlayer player = serverPlayer(s);
+                    player.teleportTo(s.overworld(), 801.0, y + 1, 804.0, java.util.Set.of(), 180, 15, true);
+                    messages = runCapturing(s, player, command);
+                    messages.add(0, net.minecraft.network.chat.Component.literal("[as player]"));
+                }
+                String text = messages.stream().map(m -> m.getString()).reduce((a, b) -> a + " | " + b).orElse("");
+                if (messages.stream().anyMatch(m -> isTranslation(m, "command.failed"))) {
+                    return "EXCEPTION " + text;
+                }
+                if (messages.stream().anyMatch(m -> isTranslation(m, "command.unknown") || isTranslation(m, "argument.")
+                    || isTranslation(m, "parsing.") || isTranslation(m, "permissions.requires"))) {
+                    return "rejected " + text;
+                }
+                return "ok " + text;
+            });
+            ctx.waitTick();
+            // some commands open a screen on the client (e.g. dimension_stack)
+            ctx.runOnClient(mc -> {
+                if (mc.gui.screen() != null) {
+                    mc.gui.setScreen(null);
+                }
+            });
+            if (outcome.startsWith("EXCEPTION")) {
+                threw.add(command);
+            }
+            else if (outcome.startsWith("rejected")) {
+                rejected++;
+            }
+            log.append(command).append("  ->  ").append(outcome.replace('\n', ' ')).append('\n');
+        }
+        srv.runOnServer(s -> {
+            removeCommandTestPortals(s);
+            // commands run as the player may have made portals at the example position 0 0 0
+            for (ServerLevel level : s.getAllLevels()) {
+                level.getEntitiesOfClass(Portal.class, new AABB(-50, -64, -50, 50, 320, 50)).forEach(e -> e.discard());
+            }
+            serverPlayer(s).teleportTo(s.overworld(), 801.0, y + 1, 804.0, java.util.Set.of(), 180, 15, true);
+        });
+        ctx.waitTicks(20);
+        try {
+            Files.writeString(out.resolve("portal_commands.txt"), log.toString());
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        check("portal commands: " + commands.size() + " command forms ran, none threw an exception ("
+                + rejected + " rejected their example arguments, see portal_commands.txt)",
+            commands.size() > 50 && threw.isEmpty(), "threw: " + threw);
+
+        // effects
+        AABB box = new AABB(790, y - 5, 790, 830, y + 10, 810);
+        String effects = srv.computeOnServer(s -> {
+            List<String> problems = new ArrayList<>();
+            Portal portal = spawnCommandTestPortal(s, y);
+            runCapturing(s, portal, "portal set_portal_size 3 4");
+            if (portal.getWidth() != 3 || portal.getHeight() != 4) {
+                problems.add("set_portal_size: " + portal.getWidth() + "x" + portal.getHeight());
+            }
+            runCapturing(s, portal, "portal set_portal_destination minecraft:the_nether 10 70 10");
+            if (portal.getDestDim() != Level.NETHER || portal.getDestPos().distanceTo(new Vec3(10, 70, 10)) > 0.01) {
+                problems.add("set_portal_destination: " + portal.getDestDim() + " " + portal.getDestPos());
+            }
+            runCapturing(s, portal, "portal set_portal_destination minecraft:overworld 820.5 " + (y + 2) + " 800.5");
+            runCapturing(s, portal, "portal complete_bi_way_bi_faced_portal");
+            int cluster = s.overworld().getEntitiesOfClass(Portal.class, box).size();
+            if (cluster != 4) {
+                problems.add("complete_bi_way_bi_faced_portal: " + cluster + " portals");
+            }
+            runCapturing(s, portal, "portal eradicate_portal_cluster");
+            int afterEradicate = s.overworld().getEntitiesOfClass(Portal.class, box).size();
+            if (afterEradicate != 0) {
+                problems.add("eradicate_portal_cluster: " + afterEradicate + " portals left");
+            }
+            Portal toGlobal = spawnCommandTestPortal(s, y);
+            int globalsBefore = GlobalPortalStorage.getGlobalPortals(s.overworld()).size();
+            runCapturing(s, toGlobal, "portal global convert_normal_portal_to_global_portal");
+            int globalsAfter = GlobalPortalStorage.getGlobalPortals(s.overworld()).size();
+            if (globalsAfter != globalsBefore + 1) {
+                problems.add("convert_normal_portal_to_global_portal: global portals " + globalsBefore + " -> " + globalsAfter);
+            }
+            removeCommandTestPortals(s);
+            return String.join("; ", problems);
+        });
+        check("portal commands: set_portal_size, set_portal_destination, complete_bi_way_bi_faced_portal, "
+            + "eradicate_portal_cluster, convert_normal_portal_to_global_portal have their effects", effects.isEmpty(), effects);
     }
 
     private static ServerPlayer serverPlayer(net.minecraft.server.MinecraftServer s) {

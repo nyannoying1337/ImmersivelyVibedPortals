@@ -87,4 +87,17 @@ public class DimListWidget extends AbstractSelectionList<DimEntryWidget> {
     protected void extractListBackground(GuiGraphicsExtractor guiGraphics) {
         // don't render background
     }
+
+    /**
+     * In 26.3 {@link #children()} is unmodifiable; edit a copy and replace the entries with it.
+     */
+    public void mutateEntries(java.util.function.Consumer<java.util.List<DimEntryWidget>> mutation) {
+        DimEntryWidget selected = getSelected();
+        java.util.List<DimEntryWidget> entries = new java.util.ArrayList<>(children());
+        mutation.accept(entries);
+        replaceEntries(entries);
+        if (selected != null && entries.contains(selected)) {
+            setSelected(selected);
+        }
+    }
 }

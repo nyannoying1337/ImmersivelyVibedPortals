@@ -104,6 +104,7 @@
     "client.render.MixinSimpleFeatureRenderPhase",
     "client.render.MixinTranslucentFeatureRenderPhase",
     "client.render.MixinRenderTypeFeatureRenderer",
+    "client.render.IEFeatureRenderDispatcher",
     "client.render.MixinFrustum_FixDeadLoop",
     "client.render.MixinGameRenderer",
     "client.render.MixinLevelRenderer",

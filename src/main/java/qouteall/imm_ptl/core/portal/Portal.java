@@ -1062,7 +1062,11 @@ public class Portal extends Entity implements
             getDestPos() != null &&
             axisW.lengthSqr() > 0.9 &&
             axisH.lengthSqr() > 0.9 &&
-            getY() > (McHelper.getMinY(level()) - 100);
+            getY() > (McHelper.getMinY(level()) - 100) &&
+            // e.g. a scale box view with scale 0 has a NaN origin; rendering a view through it fails
+            isFinite(getOriginPos()) && isFinite(getDestPos()) &&
+            Double.isFinite(width) && Double.isFinite(height) &&
+            Double.isFinite(scaling) && scaling > 1.0E-6;
         if (valid) {
             if (level() instanceof ServerLevel serverLevel) {
                 ServerLevel destWorld = serverLevel.getServer().getLevel(dimensionTo);
@@ -1086,6 +1090,10 @@ public class Portal extends Entity implements
         return false;
     }
     
+    private static boolean isFinite(Vec3 v) {
+        return Double.isFinite(v.x) && Double.isFinite(v.y) && Double.isFinite(v.z);
+    }
+
     @Environment(EnvType.CLIENT)
     private boolean isPortalValidClient() {
         boolean contains = ClientWorldLoader.getServerDimensions().contains(dimensionTo);
