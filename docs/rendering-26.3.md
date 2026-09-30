@@ -88,8 +88,22 @@ The main view's renderer stays centered on the player, so a portal to a far plac
 (beyond the render distance) would show nothing. Such views (camera less than 4 sections from the edge of the main
 grid) use a second renderer of the dimension (`DimensionRenderHelper.getOrCreateFarHelper`): its own LevelRenderer
 and LevelExtractor bound to the same ClientLevel, which forwards block changes to it (`IEClientWorld.ip_setExtraExtractor`).
-It shares the dimension's lightmap and is released after 600 frames without use. Not with Sodium, whose renderer is
+It shares the dimension's lightmap and is released after 600 frames without use.
+Both extractors take the section emptiness and chunk load changes from the same ClientLevel, and each change is given
+out once, so the far renderer's extraction passes them on to the main renderer's graph (MixinLevelRenderer
+`wrapSectionOcclusionGraphUpdate`); otherwise sections that got blocks stayed "empty" for the main view and were
+not rendered (you could see through them). Not with Sodium, whose renderer is
 not bound to a grid. Visual test: `far_portal`, `far_portal_changed`.
+
+### Hidden portals
+1.21.1 skipped portals hidden behind blocks with GL occlusion queries; renderpearl has none. `PortalOcclusionCulling`
+uses vanilla's cave culling graph instead: `SectionOcclusionGraph` is a BFS from the camera section through section
+faces that can see each other, independent of the camera rotation, so a section without a node can't be seen.
+A portal of the main view whose box only touches sections without a node is skipped (no view, no surface).
+It is rendered when unsure: the graph is being rebuilt (the camera moved), right after a teleport, global or huge portals,
+portals nearer than 8 blocks, sections outside the grid. A portal found visible stays rendered for 10 more frames
+(`PortalRenderInfo.lastVisibleFrame`). Only for the main view (portal views don't update the graph) and not with Sodium
+(it replaces the graph). Switch: `IPCGlobal.cullHiddenPortals`. Feature test: "hidden portal culling".
 
 ### Per-view buffer instances
 - Fog: `GameRenderer.fogRenderer` is swapped to a pooled `FogRenderer` per view index; call `endFrame()` on all pooled instances each frame.
@@ -100,7 +114,7 @@ not bound to a grid. Visual test: `far_portal`, `far_portal_changed`.
 ## MVP scope (first playable build)
 In: views for normal portals and one+ nesting levels, front clipping, portal surface drawing, per-dimension renderers, entities in views.
 Out for now (TODO(26.3)): stencil-like exact portal-shape culling of view contents beyond front clipping,
-occlusion-query based skipping, Sodium/Iris, cross-portal entity rendering polish, GUI portal rendering, fuse-view/isometric edge cases.
+Sodium/Iris, cross-portal entity rendering polish, GUI portal rendering, fuse-view/isometric edge cases.
 
 Old classes to delete or reduce once replaced: `RendererUsingStencil`, `QueryManager`, `GlQueryObject`, `SecondaryFrameBuffer`,
 `MixinGlStateManager`, `MixinRenderSystem_Clipping`, `framebuffer/MixinRenderTarget`, `framebuffer/MixinMainTarget`, stencil parts of `MyRenderHelper`/`ViewAreaRenderer`.

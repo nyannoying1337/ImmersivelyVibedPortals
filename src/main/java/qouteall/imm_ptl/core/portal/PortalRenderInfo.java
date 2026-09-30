@@ -10,14 +10,16 @@ import org.jetbrains.annotations.Nullable;
  * To access the package private field of Portal, this class is not in "render" package.
  * <p>
  * In 1.21.1 this held the GL occlusion queries used to decide (and predict, one frame late) whether a portal
- * is visible. 26.3 has no occlusion queries, so portal visibility is decided by CPU culling only
- * (see PortalViewRenderer).
- * TODO(26.3): occlusion-query based skipping of hidden portals (docs/rendering-26.3.md "Out for now").
- *  If a GPU visibility test is added later (e.g. reading back a few pixels of the portal surface
- *  a frame late), its per-portal state belongs here, keyed by {@code WorldRenderInfo.getRenderingDescription()}.
+ * is visible. 26.3 has no occlusion queries: portals hidden behind blocks are found with vanilla's cave culling
+ * graph instead (see PortalOcclusionCulling).
  */
 @Environment(EnvType.CLIENT)
 public class PortalRenderInfo {
+    /**
+     * The last frame ({@code RenderStates.frameIndex}) in which PortalOcclusionCulling found the portal visible
+     * from the main camera.
+     */
+    public int lastVisibleFrame = Integer.MIN_VALUE / 2;
 
     public static void init() {
         Portal.PORTAL_DISPOSE_SIGNAL.register(portal -> {

@@ -90,6 +90,20 @@ public class DimensionRenderHelper {
         return farHelper;
     }
 
+    /**
+     * If the renderer is a far helper's (see getOrCreateFarHelper), the renderer of the helper it belongs to.
+     * Both extractors take the section and chunk load changes from the same ClientLevel, and each change is given out
+     * once, so the far helper's extraction passes them on to that renderer (see MixinLevelRenderer).
+     */
+    public static @Nullable LevelRenderer getFarHelperOwnerRenderer(LevelRenderer levelRenderer) {
+        for (DimensionRenderHelper helper : qouteall.imm_ptl.core.ClientWorldLoader.RENDER_HELPER_MAP.values()) {
+            if (helper.farHelper != null && helper.farHelper.levelRenderer == levelRenderer) {
+                return helper.levelRenderer;
+            }
+        }
+        return null;
+    }
+
     private void releaseFarHelper() {
         if (farHelper != null) {
             ((IEClientWorld) world).ip_setExtraExtractor(null);

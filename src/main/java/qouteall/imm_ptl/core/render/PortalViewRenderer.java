@@ -227,11 +227,14 @@ public class PortalViewRenderer {
         public static long frames;
         public static long nanos;
         public static long views;
+        // portals in the frustum that were skipped because blocks hide them (PortalOcclusionCulling)
+        public static long hiddenPortals;
 
         public static void reset() {
             frames = 0;
             nanos = 0;
             views = 0;
+            hiddenPortals = 0;
         }
     }
 
@@ -245,6 +248,11 @@ public class PortalViewRenderer {
         }
 
         List<Portal> portals = collectVisiblePortals(client.gameRenderer.mainCamera().getCullFrustum());
+        if (node.isMainView) {
+            int count = portals.size();
+            portals.removeIf(portal -> PortalOcclusionCulling.isHidden(portal, node.cameraPos));
+            Stats.hiddenPortals += count - portals.size();
+        }
 
         for (Portal portal : portals) {
             ClientLevel destLevel = ClientWorldLoader.getOptionalWorld(portal.getDestDim());

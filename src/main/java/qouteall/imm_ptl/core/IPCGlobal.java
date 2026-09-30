@@ -27,6 +27,8 @@ public class IPCGlobal {
     
     public static boolean useSuperAdvancedFrustumCulling = true;
     public static boolean earlyFrustumCullingPortal = true;
+    // skip the views of portals hidden behind blocks (PortalOcclusionCulling)
+    public static boolean cullHiddenPortals = true;
     
     public static boolean useSeparatedStencilFormat = false;
     

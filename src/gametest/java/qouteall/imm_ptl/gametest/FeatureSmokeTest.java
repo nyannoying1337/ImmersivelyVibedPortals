@@ -104,12 +104,23 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             srv.runCommand("gamerule doDaylightCycle false");
             setFlying(srv, true);
 
+            // gradle -Pimm_ptl.featureTest.only=hidden: only the hidden portal culling scene
+            if ("hidden".equals(System.getProperty("imm_ptl.featureTest.only"))) {
+                section("hidden portal culling", () -> hiddenPortalCulling(ctx, srv));
+                writeReport();
+                if (!failures.isEmpty()) {
+                    throw new AssertionError(failures.size() + " feature checks failed:\n" + String.join("\n", failures));
+                }
+                return;
+            }
+
             section("singleplayer nether portal", () -> netherPortal(ctx, srv, "sp"));
             section("end portal", () -> endPortal(ctx, srv));
             section("make_portal command", () -> makePortalCommand(ctx, srv));
             section("world wrapping", () -> worldWrapping(ctx, srv));
             section("dimension stack", () -> dimensionStack(ctx, srv));
             section("rotating portal", () -> rotatingPortal(ctx, srv));
+            section("hidden portal culling", () -> hiddenPortalCulling(ctx, srv));
             section("command stick", () -> commandStick(ctx, srv));
             section("strip clipping (leashes)", this::stripClipping);
             section("breakable mirror", () -> breakableMirror(ctx, srv));
@@ -565,6 +576,108 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         check("rotating portal: the camera turns upright after the animation", upLater > 0.99,
             String.format(Locale.ROOT, "camera up.y %.3f", upLater));
         screenshot(ctx, "rotating_portal_later");
+    }
+
+    /**
+     * Portals hidden behind blocks are not rendered (PortalOcclusionCulling).
+     * The camera is in a small air pocket in a solid 3x3x3 block of sections (so the cave culling graph can't
+     * leave the camera's section and its neighbors); the portal is in a pocket two sections away, facing the camera.
+     * Then a tunnel is dug between the pockets, and the portal must be rendered again.
+     */
+    private void hiddenPortalCulling(ClientGameTestContext ctx, TestServerContext srv) {
+        srv.runCommand("tp Player0 487.5 100 487.5 -90 0");
+        ctx.waitTicks(60);
+        // sections x/z 29..31, y -3..-1: blocks 464..511, -48..-1 (fill is limited to 32768 blocks)
+        for (int y = -48; y < 0; y += 12) {
+            srv.runCommand(String.format(Locale.ROOT, "fill 464 %d 464 511 %d 511 minecraft:stone", y, y + 11));
+        }
+        // the camera's pocket (section 30 -2 30) and the portal's pocket (section 32 -2 30)
+        srv.runCommand("fill 486 -26 486 489 -23 489 minecraft:air");
+        srv.runCommand("fill 516 -30 482 525 -19 493 minecraft:air");
+        srv.runOnServer(s -> {
+            Portal p = Portal.ENTITY_TYPE.create(s.overworld(), net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+            p.setOriginPos(new Vec3(520.5, -24.5, 487.5));
+            // facing -x, towards the camera
+            p.setOrientationAndSize(new Vec3(0, 0, 1), new Vec3(0, 1, 0), 3, 4);
+            p.setDestinationDimension(Level.OVERWORLD);
+            p.setDestination(new Vec3(520.5, 150, 600.5));
+            qouteall.imm_ptl.core.McHelper.spawnServerEntity(p);
+        });
+        srv.runCommand("tp Player0 487.5 -26 487.5 -90 0");
+        ctx.waitTicks(20);
+        ctx.runOnClient(mc -> {
+            mc.player.getAbilities().flying = true;
+            mc.player.onUpdateAbilities();
+        });
+        ctx.waitTicks(80);
+
+        // The portal (to a far place: the far view renderer) exists while the stone's sections change from empty to
+        // filled: the main renderer must still get those changes (they are taken once from the ClientLevel).
+        // Sodium replaces the vanilla section graph and lists: no culling, and nothing to check here
+        boolean sodium = ctx.computeOnClient(mc ->
+            qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface.invoker.isSodiumPresent());
+        boolean stoneRendered = sodium || ctx.computeOnClient(mc -> {
+            long cameraSection = net.minecraft.core.SectionPos.asLong(net.minecraft.core.BlockPos.containing(mc.gameRenderer.mainCamera().position()));
+            return mc.levelRenderer.visibleSections().stream().anyMatch(section -> section.getSectionNode() == cameraSection);
+        });
+        check("hidden portal: the filled sections around the camera are rendered (far view renderer present)", stoneRendered,
+            hiddenPortalDiagnostics(ctx));
+        // the graph was built before the stone's meshes were compiled; vanilla rebuilds it when the camera moves
+        ctx.runOnClient(mc -> mc.levelRenderer.sectionOcclusionGraph().invalidate());
+        ctx.waitTicks(20);
+
+        ctx.runOnClient(mc -> qouteall.imm_ptl.core.IPCGlobal.cullHiddenPortals = false);
+        long[] off = countViews(ctx, 20);
+        ctx.runOnClient(mc -> qouteall.imm_ptl.core.IPCGlobal.cullHiddenPortals = true);
+        ctx.waitTicks(20);
+        long[] sealed = countViews(ctx, 20);
+        check("hidden portal: rendered when culling is off (the scene works)", off[0] > 0,
+            String.format(Locale.ROOT, "views %d", off[0]));
+        check(sodium ? "hidden portal: still rendered with Sodium (no culling)" : "hidden portal: not rendered behind blocks",
+            sodium ? sealed[0] > 0 && sealed[1] == 0 : sealed[0] == 0 && sealed[1] > 0,
+            String.format(Locale.ROOT, "views %d, hidden %d; %s", sealed[0], sealed[1], hiddenPortalDiagnostics(ctx)));
+        screenshot(ctx, "hidden_portal_sealed");
+
+        srv.runCommand("fill 486 -26 486 522 -23 489 minecraft:air");
+        ctx.waitTicks(80);
+        long[] open = countViews(ctx, 20);
+        check("hidden portal: rendered again when the tunnel is dug", open[0] > 0,
+            String.format(Locale.ROOT, "views %d, hidden %d; %s", open[0], open[1], hiddenPortalDiagnostics(ctx)));
+        screenshot(ctx, "hidden_portal_open");
+
+        srv.runOnServer(s -> {
+            for (Portal p : s.overworld().getEntitiesOfClass(Portal.class, new AABB(510, -40, 470, 530, -10, 500))) {
+                p.discard();
+            }
+        });
+    }
+
+    private static String hiddenPortalDiagnostics(ClientGameTestContext ctx) {
+        return ctx.computeOnClient(mc -> {
+            Vec3 camera = mc.gameRenderer.mainCamera().position();
+            List<Portal> portals = mc.level.getEntitiesOfClass(Portal.class, new AABB(510, -40, 470, 530, -10, 500));
+            String why = portals.isEmpty() ? "no portal" :
+                String.valueOf(qouteall.imm_ptl.core.render.PortalOcclusionCulling.whyVisible(portals.get(0), camera));
+            return String.format(Locale.ROOT, "camera %s, block %s, smartCull %b, visible sections %d, why visible: %s",
+                camera, mc.level.getBlockState(net.minecraft.core.BlockPos.containing(camera.add(1, 0, 0))),
+                mc.smartCull, mc.levelRenderer.visibleSections().size(), why);
+        });
+    }
+
+    /**
+     * Portal views rendered and portals skipped as hidden during the given ticks.
+     */
+    private static long[] countViews(ClientGameTestContext ctx, int ticks) {
+        long[] before = ctx.computeOnClient(mc -> new long[]{
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.views,
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.hiddenPortals
+        });
+        ctx.waitTicks(ticks);
+        long[] after = ctx.computeOnClient(mc -> new long[]{
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.views,
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.hiddenPortals
+        });
+        return new long[]{after[0] - before[0], after[1] - before[1]};
     }
 
     /**

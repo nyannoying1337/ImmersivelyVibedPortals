@@ -25,6 +25,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.render.EntityClipping;
 import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.VisibleSectionDiscovery;
+import qouteall.imm_ptl.core.mixin.client.accessor.IELevelRenderer_OcclusionGraph;
+import qouteall.imm_ptl.core.render.context_management.DimensionRenderHelper;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 
@@ -314,6 +316,18 @@ public abstract class MixinLevelRenderer {
             graph.updateEmptySections(
                 chunkLoadingRenderState.addedEmptySections, chunkLoadingRenderState.removedEmptySections
             );
+            // A far helper's renderer: the main view's renderer of this dimension needs these changes too,
+            // otherwise sections that got blocks stay "empty" in its graph and are not rendered
+            LevelRenderer owner = DimensionRenderHelper.getFarHelperOwnerRenderer((LevelRenderer) (Object) this);
+            if (owner != null) {
+                SectionOcclusionGraph ownerGraph = ((IELevelRenderer_OcclusionGraph) owner).ip_getRealSectionOcclusionGraph();
+                ownerGraph.updateLoadedChunks(
+                    chunkLoadingRenderState.addedLoadedChunks, chunkLoadingRenderState.removedLoadedChunks
+                );
+                ownerGraph.updateEmptySections(
+                    chunkLoadingRenderState.addedEmptySections, chunkLoadingRenderState.removedEmptySections
+                );
+            }
             return;
         }
         if (ip_occlusionGraphStale) {
