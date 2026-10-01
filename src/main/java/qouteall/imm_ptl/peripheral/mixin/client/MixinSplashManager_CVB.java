@@ -39,7 +39,7 @@ public abstract class MixinSplashManager_CVB {
             }
             else if (text.equals("Slow acting portals!")) {
                 result.add(literalSplash("Fast acting portals!"));
-                result.add(literalSplash("Immersive Portals!"));
+                result.add(literalSplash("Immersively Vibed Portals!"));
             }
             else {
                 result.add(splash);

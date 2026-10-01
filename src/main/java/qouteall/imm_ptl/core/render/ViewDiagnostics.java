@@ -11,6 +11,7 @@ import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.Vec3;
 import qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface;
+import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -42,6 +43,8 @@ public class ViewDiagnostics {
 
     public record ViewReport(
         String description, String dimension, Vec3 cameraPos, @Nullable SectionPos gridCenter, int gridRadius,
+        // the view's render distance in chunks (limited to the terrain loaded behind the portal, LoadedTerrainRadius)
+        int renderDistance,
         int visible, int noChunk, int waitNeighbors, int waitLight, int uncompiled,
         // -1 without Sodium
         int sodiumGeometry, int sodiumPending
@@ -66,13 +69,13 @@ public class ViewDiagnostics {
         public String toString() {
             if (isSodium()) {
                 return String.format(Locale.ROOT,
-                    "%s in %s camera (%.1f %.1f %.1f) Sodium: sections with geometry %d, pending builds %d",
-                    description, dimension, cameraPos.x, cameraPos.y, cameraPos.z, sodiumGeometry, sodiumPending
+                    "%s in %s camera (%.1f %.1f %.1f) render distance %d, Sodium: sections with geometry %d, pending builds %d",
+                    description, dimension, cameraPos.x, cameraPos.y, cameraPos.z, renderDistance, sodiumGeometry, sodiumPending
                 );
             }
             return String.format(Locale.ROOT,
-                "%s in %s camera (%.1f %.1f %.1f) grid center %s radius %d: visible %d, no chunk %d, wait neighbors %d, wait light %d, uncompiled %d",
-                description, dimension, cameraPos.x, cameraPos.y, cameraPos.z,
+                "%s in %s camera (%.1f %.1f %.1f) render distance %d, grid center %s radius %d: visible %d, no chunk %d, wait neighbors %d, wait light %d, uncompiled %d",
+                description, dimension, cameraPos.x, cameraPos.y, cameraPos.z, renderDistance,
                 gridCenter == null ? "none" : gridCenter.x() + " " + gridCenter.y() + " " + gridCenter.z(), gridRadius,
                 visible, noChunk, waitNeighbors, waitLight, uncompiled
             );
@@ -103,7 +106,7 @@ public class ViewDiagnostics {
         if (sodiumStats != null) {
             currentFrame.add(new ViewReport(
                 description, level.dimension().identifier().toString(), cameraPos, null, 0,
-                0, 0, 0, 0, 0, sodiumStats[0], sodiumStats[1]
+                WorldRenderInfo.getRenderDistance(), 0, 0, 0, 0, 0, sodiumStats[0], sodiumStats[1]
             ));
             return;
         }
@@ -133,6 +136,7 @@ public class ViewDiagnostics {
             description, level.dimension().identifier().toString(), cameraPos,
             viewArea == null ? null : viewArea.getCameraSectionPos(),
             viewArea == null ? 0 : viewArea.getViewDistance(),
+            WorldRenderInfo.getRenderDistance(),
             visible, noChunk, waitNeighbors, waitLight, uncompiled, -1, -1
         ));
     }

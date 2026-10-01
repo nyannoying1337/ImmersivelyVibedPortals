@@ -21,6 +21,11 @@ public class PortalRenderInfo {
      */
     public int lastVisibleFrame = Integer.MIN_VALUE / 2;
 
+    // see LoadedTerrainRadius
+    public int loadedRadius;
+    public int loadedRadiusFrame = Integer.MIN_VALUE / 2;
+    public int loadedRadiusMax = -1;
+
     public static void init() {
         Portal.PORTAL_DISPOSE_SIGNAL.register(portal -> {
             if (portal.level().isClientSide()) {

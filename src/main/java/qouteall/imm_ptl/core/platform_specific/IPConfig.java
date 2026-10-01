@@ -81,7 +81,10 @@ public class IPConfig implements ConfigData {
     public boolean saveMemoryInBufferPack = false;
     @ConfigEntry.Gui.Excluded
     public boolean initialScreenShown = false;
-    
+    // the IPortalInitialScreen.CONTENT_VERSION that was shown (shown again when the content changes)
+    @ConfigEntry.Gui.Excluded
+    public int initialScreenVersion = 0;
+
     // common visible configs
     
     @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.BUTTON)

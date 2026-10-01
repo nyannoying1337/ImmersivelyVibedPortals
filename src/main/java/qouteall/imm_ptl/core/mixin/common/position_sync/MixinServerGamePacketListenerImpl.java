@@ -135,7 +135,7 @@ public abstract class MixinServerGamePacketListenerImpl implements IEServerPlayN
             LOGGER.error("Player move packet is missing dimension info. Maybe the player client doesn't install iPortal");
             ServerTaskList.of(player.level().getServer()).addTask(() -> {
                 player.connection.disconnect(Component.literal(
-                    "The client does not have Immersive Portals mod"
+                    "The client does not have the Immersively Vibed Portals mod"
                 ));
                 return true;
             });

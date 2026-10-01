@@ -235,7 +235,7 @@ public class IPModInfoChecking {
                     
                     if (topLevelMods.size() > 20) {
                         CHelper.printChat(Component.literal(
-                            "[Immersive Portals] WARNING: You are using many mods. It's likely that one of them has compatibility issues with Immersive Portals. " +
+                            "[Immersively Vibed Portals] WARNING: You are using many mods. It's likely that one of them has compatibility issues with Immersively Vibed Portals. " +
                                 "If you are sure that there is no compatibility issue, disable this warning."
                         ).withStyle(ChatFormatting.RED).append(IPMcHelper.getDisableWarningText("many_mods")));
                     }

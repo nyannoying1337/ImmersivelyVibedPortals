@@ -191,6 +191,22 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
         ClientWorldLoader._onResize(width, height);
     }
 
+    // the fog of a portal view is at the view's render distance (see PortalRenderer.getPortalRenderDistance)
+    @ModifyArg(
+        method = "extractCamera",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/fog/FogRenderer;setupFog(Lnet/minecraft/client/Camera;ILnet/minecraft/client/DeltaTracker;FLnet/minecraft/client/multiplayer/ClientLevel;)Lnet/minecraft/client/renderer/fog/FogData;"
+        ),
+        index = 1
+    )
+    private int modifyFogRenderDistance(int renderDistance) {
+        if (PortalViewRenderer.isRenderingPortalView()) {
+            return Math.min(renderDistance, qouteall.imm_ptl.core.render.context_management.WorldRenderInfo.getRenderDistance());
+        }
+        return renderDistance;
+    }
+
     // not using ModifyArgs because ModifyArgs seems broken on Forge
     @ModifyArg(
         method = "bobView",

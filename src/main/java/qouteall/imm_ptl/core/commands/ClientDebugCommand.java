@@ -537,12 +537,7 @@ public class ClientDebugCommand {
         registerPortalWandCommands(wandBuilder);
         builder.then(wandBuilder);
         
-        registerSwitchCommand(
-            builder,
-            "front_clipping",
-            cond -> IPCGlobal.useFrontClipping = cond
-        );
-        registerSwitchCommand(
+registerSwitchCommand(
             builder,
             "gl_check_error",
             cond -> IPGlobal.doCheckGlError = cond
@@ -633,22 +628,7 @@ public class ClientDebugCommand {
             "view_bob_reduce",
             cond -> IPGlobal.viewBobbingReduce = cond
         );
-        registerSwitchCommand(
-            builder,
-            "iris_stencil",
-            cond -> IPCGlobal.debugEnableStencilWithIris = cond
-        );
-        registerSwitchCommand(
-            builder,
-            "another_stencil",
-            cond -> IPCGlobal.useSeparatedStencilFormat = cond
-        );
-        registerSwitchCommand(
-            builder,
-            "experimental_iris_portal_renderer",
-            cond -> IPCGlobal.experimentalIrisPortalRenderer = cond
-        );
-        registerSwitchCommand(
+registerSwitchCommand(
             builder,
             "log_client_player_colliding_portal_update",
             cond -> IPGlobal.logClientPlayerCollidingPortalUpdate = cond

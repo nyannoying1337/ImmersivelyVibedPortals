@@ -34,8 +34,11 @@ public class ChunkVisibility {
         );
     }
     
+    // a player nearer than this to a portal loads its other side as far as the render distance
+    private static final double NEAR_PORTAL_DISTANCE = 5;
+    
     private static int getDirectLoadingDistance(int renderDistance, double distanceToPortal) {
-        if (distanceToPortal < 5) {
+        if (distanceToPortal < NEAR_PORTAL_DISTANCE) {
             return renderDistance;
         }
         if (distanceToPortal < 15) {
@@ -44,8 +47,13 @@ public class ChunkVisibility {
         return renderDistance / 3;
     }
     
+    /**
+     * @param isNearPortal the player stands at the portal (about to walk through): only the performance level caps
+     *                     the loading distance, not {@link IPGlobal#indirectLoadingRadiusCap} (8 chunks by default),
+     *                     which left terrain missing beyond 8 chunks in the view of the portal right in front of the player
+     */
     private static int getCappedLoadingDistance(
-        Portal portal, ServerPlayer player, int targetLoadingDistance
+        Portal portal, ServerPlayer player, int targetLoadingDistance, boolean isNearPortal
     ) {
         PerformanceLevel performanceLevel =
             ImmPtlChunkTracking.getPlayerInfo(player).performanceLevel;
@@ -53,7 +61,7 @@ public class ChunkVisibility {
         int cap2 = IPGlobal.indirectLoadingRadiusCap;
         int cap3 = PerformanceLevel.getIndirectLoadingRadiusCap(ServerPerformanceMonitor.getLevel());
         
-        int cap = Math.min(cap1, cap2);
+        int cap = isNearPortal ? cap1 : Math.min(cap1, cap2);
         
         // load more for scaling portal
         if (portal.getScale() > 2) {
@@ -136,7 +144,8 @@ public class ChunkVisibility {
                 ),
                 getCappedLoadingDistance(
                     portal, player,
-                    getDirectLoadingDistance(loadDistance, distance)
+                    getDirectLoadingDistance(loadDistance, distance),
+                    distance < NEAR_PORTAL_DISTANCE
                 )
             );
         }
@@ -169,7 +178,7 @@ public class ChunkVisibility {
                     ChunkPos.containing(BlockPos.containing(portal.getDestPos()))
                 ),
                 getCappedLoadingDistance(
-                    portal, player, loadDistance / 4
+                    portal, player, loadDistance / 4, false
                 )
             );
         }

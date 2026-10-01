@@ -57,6 +57,77 @@ public class FeatureSmokeTest implements FabricClientGameTest {
     private final List<String> failures = new ArrayList<>();
     private Path out;
 
+    /**
+     * gradle -Pimm_ptl.featureTest.userWorld=<save directory>: open a copy of that world (the test player is put at
+     * imm_ptl.featureTest.userWorldPos: "dimension x y z yaw pitch") and record the portal view diagnostics there.
+     */
+    private void userWorld(ClientGameTestContext ctx, Path source, String pos) {
+        TestWorldSave save;
+        try (TestSingleplayerContext sp = ctx.worldBuilder()
+            .adjustSettings(s -> s.setGameMode(WorldCreationUiState.SelectedGameMode.CREATIVE))
+            .create()
+        ) {
+            save = sp.getWorldSave();
+        }
+        Path target = save.getSaveDirectory();
+        try {
+            try (var files = Files.walk(target)) {
+                for (Path f : files.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    if (!f.equals(target)) {
+                        Files.delete(f);
+                    }
+                }
+            }
+            try (var files = Files.walk(source)) {
+                for (Path f : files.toList()) {
+                    if (f.getFileName().toString().equals("session.lock")) {
+                        continue;
+                    }
+                    Path t = target.resolve(source.relativize(f).toString());
+                    if (Files.isDirectory(f)) {
+                        Files.createDirectories(t);
+                    }
+                    else {
+                        Files.copy(f, t);
+                    }
+                }
+            }
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        String[] p = pos.split(" ");
+        // a render distance above indirectLoadingRadiusCap (8 chunks), like the reported case
+        ctx.runOnClient(mc -> mc.options.renderDistance().set(16));
+        try (TestSingleplayerContext sp = save.open()) {
+            TestServerContext srv = sp.getServer();
+            ctx.waitTicks(40);
+            srv.runCommand("gamemode creative Player0");
+            srv.runCommand(String.format(Locale.ROOT, "execute in %s run tp Player0 %s %s %s %s %s", p[0], p[1], p[2], p[3], p[4], p[5]));
+            ctx.runOnClient(mc -> {
+                qouteall.imm_ptl.core.render.ViewDiagnostics.enabled = true;
+                if (!mc.gui.hud.isHidden()) {
+                    mc.gui.hud.toggle();
+                }
+            });
+            List<String> log = new ArrayList<>();
+            log.add("render distance " + ctx.computeOnClient(mc -> mc.options.getEffectiveRenderDistance())
+                + ", position " + pos);
+            String last = sampleTerrain(ctx, "user world", 6, 100, log);
+            screenshot(ctx, "user_world");
+            ctx.runOnClient(mc -> qouteall.imm_ptl.core.render.ViewDiagnostics.enabled = false);
+            try {
+                Files.write(out.resolve("user_world.txt"), log);
+            }
+            catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            check("user world: the portal views have terrain", last == null, String.valueOf(last));
+        }
+        ctx.waitForScreen(TitleScreen.class);
+    }
+
     @Override
     public void runTest(ClientGameTestContext ctx) {
         out = Path.of(System.getProperty("imm_ptl.featureTest.out", "feature-test"));
@@ -70,6 +141,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         ctx.runOnClient(mc -> {
             IPConfig c = IPConfig.getConfig();
             c.initialScreenShown = true;
+            c.initialScreenVersion = qouteall.imm_ptl.core.miscellaneous.IPortalInitialScreen.CONTENT_VERSION;
             c.saveConfigFile();
             if (mc.gui.screen() instanceof IPortalInitialScreen s) {
                 s.onClose();
@@ -84,6 +156,15 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         if (Boolean.getBoolean("imm_ptl.featureTest.skip")) {
             return;
         }
+        String userWorld = System.getProperty("imm_ptl.featureTest.userWorld");
+        if (userWorld != null && !userWorld.isEmpty()) {
+            userWorld(ctx, Path.of(userWorld), System.getProperty("imm_ptl.featureTest.userWorldPos", "minecraft:overworld 0 100 0 0 0"));
+            writeReport();
+            if (!failures.isEmpty()) {
+                throw new AssertionError(failures.size() + " feature checks failed:\n" + String.join("\n", failures));
+            }
+            return;
+        }
         // gradle -Pimm_ptl.featureTest.only=dimstack: only the dimension stack scene
         if ("dimstack".equals(System.getProperty("imm_ptl.featureTest.only"))) {
             dimStackSection(ctx);
@@ -93,6 +174,8 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             }
             return;
         }
+
+        section("first start screen", () -> initialScreen(ctx));
 
         try (TestSingleplayerContext sp = ctx.worldBuilder()
             .adjustSettings(s -> s.setGameMode(WorldCreationUiState.SelectedGameMode.CREATIVE))
@@ -586,6 +669,44 @@ public class FeatureSmokeTest implements FabricClientGameTest {
     }
 
     /**
+     * The screen shown at the first start (and again when its content changes): all pages, then "I know" on the last
+     * one stores the content version, so that it isn't shown again.
+     */
+    private void initialScreen(ClientGameTestContext ctx) {
+        ctx.runOnClient(mc -> {
+            IPConfig.getConfig().initialScreenVersion = 0;
+            mc.gui.setScreen(new IPortalInitialScreen(() -> mc.gui.setScreen(new TitleScreen())));
+        });
+        List<String> overflowing = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            ctx.waitTicks(2);
+            screenshot(ctx, "initial_screen_" + i);
+            // the page's text is inside the screen and above the buttons (at this window size)
+            int page = i;
+            ctx.runOnClient(mc -> {
+                var screen = mc.gui.screen();
+                var text = screen.children().stream()
+                    .filter(c -> c instanceof net.minecraft.client.gui.components.MultiLineTextWidget)
+                    .map(c -> (net.minecraft.client.gui.components.AbstractWidget) c).findFirst().orElseThrow();
+                int buttonsTop = screen.children().stream()
+                    .filter(c -> c instanceof net.minecraft.client.gui.components.Button)
+                    .mapToInt(c -> ((net.minecraft.client.gui.components.AbstractWidget) c).getY()).min().orElseThrow();
+                if (text.getX() < 0 || text.getRight() > screen.width || text.getBottom() > buttonsTop) {
+                    overflowing.add(String.format(Locale.ROOT, "page %d: text x %d..%d y ..%d, screen width %d, buttons at y %d",
+                        page + 1, text.getX(), text.getRight(), text.getBottom(), screen.width, buttonsTop));
+                }
+            });
+            ctx.clickScreenButton("iportal.initial_screen.i_know");
+        }
+        check("first start screen: every page fits the screen (1280x720)", overflowing.isEmpty(), String.join("; ", overflowing));
+        ctx.waitForScreen(TitleScreen.class);
+        int version = ctx.computeOnClient(mc -> IPConfig.getConfig().initialScreenVersion);
+        check("first start screen: going through it stores its content version (it is not shown again)",
+            version == IPortalInitialScreen.CONTENT_VERSION && !IPortalInitialScreen.shouldShow(IPConfig.getConfig()),
+            "version " + version);
+    }
+
+    /**
      * Portals hidden behind blocks are not rendered (PortalOcclusionCulling).
      * The camera is in a small air pocket in a solid 3x3x3 block of sections (so the cave culling graph can't
      * leave the camera's section and its neighbors); the portal is in a pocket two sections away, facing the camera.
@@ -618,7 +739,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         });
         ctx.waitTicks(80);
 
-        // The portal (to a far place: the far view renderer) exists while the stone's sections change from empty to
+        // The portal (to a far place: an extra view renderer of the overworld) exists while the stone's sections change from empty to
         // filled: the main renderer must still get those changes (they are taken once from the ClientLevel).
         // Sodium replaces the vanilla section graph and lists: no culling, and nothing to check here
         boolean sodium = ctx.computeOnClient(mc ->
@@ -627,7 +748,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             long cameraSection = net.minecraft.core.SectionPos.asLong(net.minecraft.core.BlockPos.containing(mc.gameRenderer.mainCamera().position()));
             return mc.levelRenderer.visibleSections().stream().anyMatch(section -> section.getSectionNode() == cameraSection);
         });
-        check("hidden portal: the filled sections around the camera are rendered (far view renderer present)", stoneRendered,
+        check("hidden portal: the filled sections around the camera are rendered (extra view renderer present)", stoneRendered,
             hiddenPortalDiagnostics(ctx));
         // the graph was built before the stone's meshes were compiled; vanilla rebuilds it when the camera moves
         ctx.runOnClient(mc -> mc.levelRenderer.sectionOcclusionGraph().invalidate());
@@ -668,6 +789,14 @@ public class FeatureSmokeTest implements FabricClientGameTest {
      */
     private void farPortalTerrain(ClientGameTestContext ctx, TestServerContext srv) {
         String inNether = "execute in minecraft:the_nether run ";
+        // a render distance above indirectLoadingRadiusCap (8), and no FPS based loading reduction (not tested here)
+        int oldRenderDistance = ctx.computeOnClient(mc -> mc.options.renderDistance().get());
+        ctx.runOnClient(mc -> {
+            mc.options.renderDistance().set(12);
+            // the server loads by the player's requested view distance, sent with the client information
+            mc.options.broadcastOptions();
+            IPGlobal.enableClientPerformanceAdjustment = false;
+        });
         int x0 = 999, y = 66, z = 1000;
         srv.runCommand(inNether + "tp Player0 1001.0 90 1010.0 180 0");
         ctx.waitTicks(60);
@@ -707,6 +836,11 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         log.add("destination " + dest);
         String front = sampleTerrain(ctx, "front", 6, 100, log);
         screenshot(ctx, "far_portal_terrain_front");
+        // standing at the portal: its other side is loaded and rendered as far as the render distance
+        String frontDistance = ctx.computeOnClient(mc -> qouteall.imm_ptl.core.render.ViewDiagnostics.getLastFrame().stream()
+            .map(r -> String.valueOf(r.renderDistance())).reduce("", (a, b) -> a + b + " "));
+        check("far portal terrain: the portal in front of the player is rendered as far as the render distance (12)",
+            frontDistance.trim().equals("12"), "view render distances: " + frontDistance);
 
         // standing in the frame, just before the portal plane (z + 0.5)
         srv.runCommand(inNether + String.format(Locale.ROOT, "tp Player0 %.1f %d %.2f 180 0", x0 + 2.0, y + 1, z + 0.85));
@@ -733,6 +867,11 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         srv.runOnServer(s -> s.getLevel(Level.NETHER).getEntitiesOfClass(Portal.class, new AABB(x0 - 6, y - 2, z - 3, x0 - 1, y + 7, z + 2))
             .forEach(p -> p.discard()));
         srv.runCommand("execute in minecraft:overworld run tp Player0 0.5 -58 0.5");
+        ctx.runOnClient(mc -> {
+            mc.options.renderDistance().set(oldRenderDistance);
+            mc.options.broadcastOptions();
+            IPGlobal.enableClientPerformanceAdjustment = true;
+        });
         ctx.waitTicks(40);
         try {
             Files.write(out.resolve("far_portal_terrain.txt"), log);

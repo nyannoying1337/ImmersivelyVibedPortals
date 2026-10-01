@@ -41,6 +41,7 @@ public class PerfBenchmark implements FabricClientGameTest {
         ctx.runOnClient(mc -> {
             IPConfig c = IPConfig.getConfig();
             c.initialScreenShown = true;
+            c.initialScreenVersion = qouteall.imm_ptl.core.miscellaneous.IPortalInitialScreen.CONTENT_VERSION;
             c.enableClientPerformanceAdjustment = false;
             c.saveConfigFile();
             if (mc.gui.screen() instanceof IPortalInitialScreen s) {

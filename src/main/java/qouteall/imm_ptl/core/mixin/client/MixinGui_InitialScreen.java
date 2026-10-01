@@ -23,7 +23,7 @@ public class MixinGui_InitialScreen {
         List<Function<Runnable, Screen>> output, CallbackInfoReturnable<Boolean> cir
     ) {
         IPConfig config = IPConfig.getConfig();
-        if (!config.initialScreenShown) {
+        if (IPortalInitialScreen.shouldShow(config)) {
             output.add(IPortalInitialScreen::new);
         }
     }

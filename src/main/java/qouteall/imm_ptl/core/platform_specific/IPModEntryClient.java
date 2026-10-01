@@ -95,8 +95,7 @@ public class IPModEntryClient implements ClientModInitializer {
             Helper.log("Iris is present");
 
             IrisInterface.invoker = new OnIrisPresent();
-            // TODO(26.3): ExperimentalIrisPortalRenderer.init(); (Iris compat not ported)
-            
+
             IPGlobal.CLIENT_TASK_LIST.addTask(MyTaskList.oneShotTask(() -> {
                 if (IPConfig.getConfig().shouldDisplayWarning("iris")) {
                     CHelper.printChat(

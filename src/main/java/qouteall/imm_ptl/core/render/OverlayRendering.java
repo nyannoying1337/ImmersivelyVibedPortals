@@ -62,7 +62,7 @@ public class OverlayRendering {
         if (IrisInterface.invoker.isShaders()) {
             if (!shaderOverlayWarned) {
                 shaderOverlayWarned = true;
-                CHelper.printChat("[Immersive Portals] Portal overlay cannot be rendered with shaders");
+                CHelper.printChat("[Immersively Vibed Portals] Portal overlay cannot be rendered with shaders");
             }
 
             return;

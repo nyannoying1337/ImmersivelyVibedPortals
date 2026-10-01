@@ -12,6 +12,7 @@ import qouteall.imm_ptl.core.IPCGlobal;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
+import qouteall.imm_ptl.core.render.LoadedTerrainRadius;
 import qouteall.imm_ptl.core.render.TransformationManager;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
@@ -43,10 +44,10 @@ public abstract class PortalRenderer {
 
     // In 1.21.1 the renderer subclasses (stencil, Iris compat...) were driven by instance hooks
     // (translucent/hand rendering, framebuffer clearing, portal entity rendering).
-    // In 26.3 portal views are rendered by PortalViewRenderer and portal surfaces by PortalEntityRenderer,
-    // so those hooks are gone (see docs/rendering-26.3.md).
-    // TODO(26.3): Iris support. The renderer switching (IPCGlobal.renderer, switchToCorrectRenderer, which also ran
-    //  IPModInfoChecking.checkShaderpack) was removed with the hooks; redo it when an Iris-compatible renderer exists.
+    // In 26.3 portal views are rendered by PortalViewRenderer (also with Iris shaderpacks) and portal surfaces by
+    // PortalEntityRenderer, so those hooks and the renderer switching are gone (see docs/rendering-26.3.md);
+    // what is left here are the static helpers. The incompatible shaderpack warning (IPModInfoChecking.checkShaderpack,
+    // run by the renderer switching) isn't shown: its list was made for the 1.21.1 renderers.
 
     public static boolean shouldSkipRenderingPortal(Portal portal, Supplier<Frustum> frustumSupplier) {
         if (!portal.isPortalValid()) {
@@ -122,7 +123,20 @@ public abstract class PortalRenderer {
         return range;
     }
     
+    /**
+     * The render distance of the view through the portal: not further than the terrain loaded behind it
+     * ({@link LoadedTerrainRadius}), so that the view ends in fog like the normal view, not in a hard edge of sky.
+     * Global portals (world wrapping, dimension stacks) load around the transformed player position instead.
+     */
     public static int getPortalRenderDistance(Portal portal) {
+        int renderDistance = getPortalRenderDistanceIgnoringLoading(portal);
+        if (portal.getIsGlobal()) {
+            return renderDistance;
+        }
+        return LoadedTerrainRadius.get(portal, renderDistance);
+    }
+    
+    private static int getPortalRenderDistanceIgnoringLoading(Portal portal) {
         int mcRenderDistance = client.options.getEffectiveRenderDistance();
         
         if (portal.getScale() > 2) {

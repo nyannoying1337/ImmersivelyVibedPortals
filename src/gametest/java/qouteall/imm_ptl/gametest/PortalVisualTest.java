@@ -78,6 +78,7 @@ public class PortalVisualTest implements FabricClientGameTest {
         ctx.runOnClient(mc -> {
             IPConfig c = IPConfig.getConfig();
             c.initialScreenShown = true;
+            c.initialScreenVersion = qouteall.imm_ptl.core.miscellaneous.IPortalInitialScreen.CONTENT_VERSION;
             c.enableClientPerformanceAdjustment = false;
             c.enableServerPerformanceAdjustment = false;
             c.checkModInfoFromInternet = false;
@@ -344,7 +345,7 @@ public class PortalVisualTest implements FabricClientGameTest {
      * at x=994. Looking -X through it (far_portal): the yellow wall and the netherrack floor.
      * Nether fog or sky only means the far sections of the player's dimension are not rendered in the view.
      * Then the middle of the wall is replaced by lime concrete (far_portal_changed): the view must show it
-     * (block changes reach the far view renderer).
+     * (block changes reach the extra view renderer that renders it).
      */
     void shootFarPortal(ClientGameTestContext ctx, TestSingleplayerContext sp, TestServerContext srv) {
         for (String c : List.of(

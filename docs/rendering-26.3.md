@@ -96,6 +96,16 @@ renderer becomes the main one. The dirty sections of a view are collected around
 grid; they're skipped when compiling (`MixinLevelRenderer_ForceMainThreadRebuild`) and reset/compiled when the grid
 moves over them. Not with Sodium, whose renderer is not bound to a grid. Visual test: `far_portal`, `far_portal_changed`.
 
+How far a view is rendered: the server loads the other side of a portal less far than the render distance
+(`ChunkVisibility`: the full render distance within 5 blocks of the portal, 2/3 within 15, 1/3 beyond; capped by
+`indirectLoadingRadiusCap` (8) except within 5 blocks, and by the client's performance level). A view rendered to the
+full render distance showed the sky past the loaded chunks, with a hard edge. So `PortalRenderer.getPortalRenderDistance`
+limits a view to the terrain loaded around the portal's destination (`LoadedTerrainRadius`: the largest ring of chunks
+that is at least 90% loaded, measured every 10 frames), and the view's fog is set at that distance
+(`MixinGameRenderer.modifyFogRenderDistance`). Not for global portals. Feature tests: "terrain behind a far portal"
+(render distance 12), and `-Pimm_ptl.featureTest.userWorld=<save dir> -Pimm_ptl.featureTest.userWorldPos="<dim> x y z yaw pitch"`
+to open a copy of a reported world at the reported position.
+
 Why terrain is missing in a view: `ViewDiagnostics` (`/imm_ptl_client_debug report_portal_views`, run twice) reports per
 view the visible sections without a loaded chunk (chunk loading: the server loads less behind a portal the further the
 player is from it, and much less at a low client performance level, `ChunkVisibility`), the unbuilt sections of loaded
