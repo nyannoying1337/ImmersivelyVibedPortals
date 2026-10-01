@@ -60,6 +60,8 @@ public class PortalVisualTest implements FabricClientGameTest {
     static final AABB FRAME = new AABB(-2, 63, -2, 4, 70, 3);
 
     private Path out;
+    // static shots with a portal view that has no terrain or unbuilt sections (see ViewDiagnostics)
+    private final List<String> terrainProblems = new ArrayList<>();
 
     @Override
     public void runTest(ClientGameTestContext ctx) {
@@ -67,6 +69,7 @@ public class PortalVisualTest implements FabricClientGameTest {
         try {
             Files.createDirectories(out);
             Files.deleteIfExists(out.resolve("poses.csv"));
+            Files.deleteIfExists(out.resolve("terrain.csv"));
         }
         catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -107,6 +110,7 @@ public class PortalVisualTest implements FabricClientGameTest {
             TestServerContext srv = sp.getServer();
             sp.getConnection().waitForChunksRender();
             srv.runCommand("time set noon");
+            ctx.runOnClient(mc -> qouteall.imm_ptl.core.render.ViewDiagnostics.enabled = true);
 
             // overworld destination frame and marker walls (flat world surface is at y=-60)
             for (String c : List.of(
@@ -193,6 +197,11 @@ public class PortalVisualTest implements FabricClientGameTest {
                 ctx.waitTick();
                 shoot(ctx, null, new Pose(String.format(Locale.ROOT, "walk_%02d", i), 0, 0, 0, 0, 0));
             }
+            ctx.runOnClient(mc -> qouteall.imm_ptl.core.render.ViewDiagnostics.enabled = false);
+        }
+        if (!terrainProblems.isEmpty()) {
+            throw new AssertionError("portal views with missing terrain (see terrain.csv):\n"
+                + String.join("\n", terrainProblems));
         }
     }
 
@@ -430,6 +439,48 @@ public class PortalVisualTest implements FabricClientGameTest {
         catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        checkTerrain(ctx, p, srv != null && !p.name.equals("warmup"));
+    }
+
+    /**
+     * Records the terrain of every portal view of the shot's frame (ViewDiagnostics) in terrain.csv.
+     * A view without any visible section, or with unbuilt sections of loaded chunks, is a problem.
+     * Only checked for static shots (after waiting for the views).
+     * Sections that just came into view may still be building, so only terrain that stays missing is a problem.
+     */
+    void checkTerrain(ClientGameTestContext ctx, Pose p, boolean isStatic) {
+        String[] result = sampleTerrain(ctx, p);
+        String atShot = result[0];
+        for (int i = 0; isStatic && Boolean.parseBoolean(result[1]) && i < 10; i++) {
+            ctx.waitTicks(10);
+            result = sampleTerrain(ctx, p);
+        }
+        if (isStatic && Boolean.parseBoolean(result[1])) {
+            terrainProblems.add(result[0]);
+        }
+        String row = atShot.equals(result[0]) ? atShot : atShot + "\n" + p.name + " after waiting: " + result[0];
+        try {
+            Files.writeString(out.resolve("terrain.csv"), row + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    static String[] sampleTerrain(ClientGameTestContext ctx, Pose p) {
+        return ctx.computeOnClient(mc -> {
+            var reports = qouteall.imm_ptl.core.render.ViewDiagnostics.getLastFrame();
+            // the cloud shots look through a portal at cloud height: the view has only sky, and Sodium counts only
+            // sections with geometry
+            boolean skyOnly = p.name.startsWith("clouds");
+            boolean bad = reports.stream().anyMatch(r -> r.hasProblem() && !(skyOnly && r.isSodium()));
+            StringBuilder sb = new StringBuilder(p.name).append(",gridMoves=")
+                .append(qouteall.imm_ptl.core.render.ViewDiagnostics.getLastFrameGridMoves());
+            for (var r : reports) {
+                sb.append(",\"").append(r).append("\"");
+            }
+            return new String[]{sb.toString(), String.valueOf(bad)};
+        });
     }
 
     /**

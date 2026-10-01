@@ -23,7 +23,7 @@ public class MixinLevelRenderer_ForceMainThreadRebuild {
         SectionRenderDispatcher.RenderSection section, RenderSectionRegion region, Operation<Void> original
     ) {
         // A portal view of another dimension collects the dirty sections around its camera, but the ViewArea grid
-        // may be centered elsewhere (MixinLevelRenderer.ip_repositionForPortalViews), then the section is not in
+        // may not cover all of them (DimensionRenderHelper.selectForView), then the section is not in
         // the grid. It is reset (and compiled) when the grid moves over it.
         if (section == null) {
             return;

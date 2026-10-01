@@ -22,6 +22,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import qouteall.imm_ptl.core.ducks.IELevelRenderer_ViewGrid;
 import qouteall.imm_ptl.core.render.EntityClipping;
 import qouteall.imm_ptl.core.render.PortalViewRenderer;
 import qouteall.imm_ptl.core.render.VisibleSectionDiscovery;
@@ -46,8 +47,8 @@ import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
  *     is not changed (repositionCamera), the {@link SectionOcclusionGraph} is not updated
  *     (only its loaded chunk / empty section bookkeeping is), and translucent sections are not resorted.
  *     For views of other dimensions the graph is not updated either (views don't use it), translucent sections
- *     are resorted normally, and the ViewArea is centered once per frame for all views of that renderer
- *     (see {@link #ip_repositionForPortalViews}).</li>
+ *     are resorted normally, and the ViewArea is not moved at render time: DimensionRenderHelper.selectForView
+ *     moves it before the view is extracted ({@link #ip_moveGridForView}).</li>
  * </ul>
  * <p>
  * Hooks of 1.21.1 that were removed because the new design does not need them:
@@ -67,7 +68,7 @@ import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
  * Depth clamp: renderpearl has none; the portal surface shader emulates it (portal_view.vsh/fsh).
  */
 @Mixin(value = LevelRenderer.class)
-public abstract class MixinLevelRenderer {
+public abstract class MixinLevelRenderer implements IELevelRenderer_ViewGrid {
 
     @Shadow
     @Final
@@ -93,21 +94,8 @@ public abstract class MixinLevelRenderer {
     @Final
     private net.minecraft.client.renderer.WorldBorderRenderer worldBorderRenderer;
 
-    // ViewArea centering of the portal views of another dimension (see ip_repositionForPortalViews)
-    @Unique
-    private static final int IP_MIN_VIEW_MARGIN = 4;
-
     @Unique
     private boolean ip_occlusionGraphStale = false;
-
-    @Unique
-    private int ip_viewFrameIndex = -1;
-    @Unique
-    private @Nullable SectionPos ip_viewAreaCenter;
-    @Unique
-    private int ip_viewMinX, ip_viewMaxX, ip_viewMinZ, ip_viewMaxZ, ip_viewCount;
-    @Unique
-    private int ip_lastFrameMinX, ip_lastFrameMaxX, ip_lastFrameMinZ, ip_lastFrameMaxZ, ip_lastFrameViewCount;
 
     // the lists used by the main view (the vanilla instances)
     @Unique
@@ -205,86 +193,30 @@ public abstract class MixinLevelRenderer {
     }
 
     /**
-     * Don't re-center the main view's ViewArea to the portal view camera
-     * (that resets all the sections that move in the grid, and invalidates the occlusion graph),
-     * and don't change the camera position used for compile task priority.
+     * In portal views the ViewArea isn't moved at render time: for a view of the main view's dimension that would
+     * re-center the main view's grid to the view camera (resetting all the sections that move in the grid, and
+     * invalidating the occlusion graph); for other renderers DimensionRenderHelper.selectForView moves it before the
+     * view is extracted ({@link #ip_moveGridForView}), because the extraction already looks up the view's sections.
      */
     @Inject(method = "repositionCamera", at = @At("HEAD"), cancellable = true)
     private void onRepositionCamera(CameraRenderState camera, CallbackInfo ci) {
-        if (ip_isPortalViewWithMainLevelRenderer()) {
-            ci.cancel();
-            return;
-        }
         if (PortalViewRenderer.isRenderingPortalView()) {
-            ip_repositionForPortalViews(camera);
             ci.cancel();
         }
     }
 
-    /**
-     * The renderer of a dimension other than the main view's one is only used by portal views.
-     * Several views of it in one frame (e.g. several portals to different places of that dimension) would each
-     * re-center the ViewArea to their camera. Every re-centering resets the sections that move in the grid,
-     * so the sections at the edges would be reset and recompiled every view, and mostly not be compiled when
-     * they're rendered.
-     * Instead the ViewArea is centered once per frame, on the middle of the view cameras of the last frame,
-     * so that it stays put while the views don't move, and every view gets the part of its surroundings
-     * that is within the grid. (With one view, that's the view camera, like vanilla.)
-     * A view whose camera is too near the edge of that grid (less than {@link #IP_MIN_VIEW_MARGIN} sections)
-     * is rendered with the grid centered on its camera, like before.
-     */
-    @Unique
-    private void ip_repositionForPortalViews(CameraRenderState camera) {
+    @Override
+    public boolean ip_moveGridForView(SectionPos center, Vec3 cameraPos) {
         if (viewArea == null || sectionRenderDispatcher == null) {
-            return;
+            return false;
         }
-        SectionPos cameraSectionPos = SectionPos.of(camera.pos);
-
-        if (ip_viewFrameIndex != RenderStates.frameIndex) {
-            // first view of this renderer in this frame
-            boolean lastFrameHadViews = ip_viewFrameIndex == RenderStates.frameIndex - 1 && ip_viewCount > 0;
-            ip_lastFrameViewCount = lastFrameHadViews ? ip_viewCount : 0;
-            ip_lastFrameMinX = ip_viewMinX;
-            ip_lastFrameMaxX = ip_viewMaxX;
-            ip_lastFrameMinZ = ip_viewMinZ;
-            ip_lastFrameMaxZ = ip_viewMaxZ;
-            ip_viewFrameIndex = RenderStates.frameIndex;
-            ip_viewCount = 0;
-
-            if (ip_lastFrameViewCount > 1) {
-                ip_viewAreaCenter = SectionPos.of(
-                    Math.floorDiv(ip_lastFrameMinX + ip_lastFrameMaxX, 2),
-                    cameraSectionPos.y(),
-                    Math.floorDiv(ip_lastFrameMinZ + ip_lastFrameMaxZ, 2)
-                );
-            }
-            else {
-                ip_viewAreaCenter = cameraSectionPos;
-            }
-        }
-
-        int maxOffset = Math.max(viewArea.getViewDistance() - IP_MIN_VIEW_MARGIN, 0);
-        SectionPos center = Math.abs(cameraSectionPos.x() - ip_viewAreaCenter.x()) <= maxOffset
-            && Math.abs(cameraSectionPos.z() - ip_viewAreaCenter.z()) <= maxOffset
-            ? ip_viewAreaCenter : cameraSectionPos;
-        if (viewArea.repositionCamera(center)) {
+        boolean moved = viewArea.repositionCamera(center);
+        if (moved) {
             worldBorderRenderer.invalidate();
         }
-
-        if (ip_viewCount == 0) {
-            ip_viewMinX = ip_viewMaxX = cameraSectionPos.x();
-            ip_viewMinZ = ip_viewMaxZ = cameraSectionPos.z();
-        }
-        else {
-            ip_viewMinX = Math.min(ip_viewMinX, cameraSectionPos.x());
-            ip_viewMaxX = Math.max(ip_viewMaxX, cameraSectionPos.x());
-            ip_viewMinZ = Math.min(ip_viewMinZ, cameraSectionPos.z());
-            ip_viewMaxZ = Math.max(ip_viewMaxZ, cameraSectionPos.z());
-        }
-        ip_viewCount++;
-
         // compile task priority
-        sectionRenderDispatcher.setCameraPosition(camera.pos);
+        sectionRenderDispatcher.setCameraPosition(cameraPos);
+        return moved;
     }
 
     /**
@@ -316,9 +248,9 @@ public abstract class MixinLevelRenderer {
             graph.updateEmptySections(
                 chunkLoadingRenderState.addedEmptySections, chunkLoadingRenderState.removedEmptySections
             );
-            // A far helper's renderer: the main view's renderer of this dimension needs these changes too,
+            // An extra helper's renderer: the dimension's own renderer needs these changes too,
             // otherwise sections that got blocks stay "empty" in its graph and are not rendered
-            LevelRenderer owner = DimensionRenderHelper.getFarHelperOwnerRenderer((LevelRenderer) (Object) this);
+            LevelRenderer owner = DimensionRenderHelper.getExtraHelperOwnerRenderer((LevelRenderer) (Object) this);
             if (owner != null) {
                 SectionOcclusionGraph ownerGraph = ((IELevelRenderer_OcclusionGraph) owner).ip_getRealSectionOcclusionGraph();
                 ownerGraph.updateLoadedChunks(

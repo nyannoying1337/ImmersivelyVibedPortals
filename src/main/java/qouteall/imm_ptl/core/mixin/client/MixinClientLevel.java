@@ -93,21 +93,21 @@ public abstract class MixinClientLevel implements IEClientWorld {
     }
     
     @Unique
-    private @Nullable LevelExtractor ip_extraExtractor;
+    private List<LevelExtractor> ip_extraExtractors = List.of();
     
     @Override
-    public void ip_setExtraExtractor(@Nullable LevelExtractor extractor) {
-        ip_extraExtractor = extractor;
+    public void ip_setExtraExtractors(List<LevelExtractor> extractors) {
+        ip_extraExtractors = extractors;
     }
     
-    // the level only notifies its own extractor; also notify the far view extractor of this level
+    // the level only notifies its own extractor; also notify the extra view extractors of this level
     @Inject(method = "sendBlockUpdated", at = @At("TAIL"))
     private void onSendBlockUpdated(
         net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState old,
         net.minecraft.world.level.block.state.BlockState current, int updateFlags, CallbackInfo ci
     ) {
-        if (ip_extraExtractor != null) {
-            ip_extraExtractor.blockChanged(pos, updateFlags);
+        for (LevelExtractor extractor : ip_extraExtractors) {
+            extractor.blockChanged(pos, updateFlags);
         }
     }
     
@@ -116,15 +116,15 @@ public abstract class MixinClientLevel implements IEClientWorld {
         net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState oldState,
         net.minecraft.world.level.block.state.BlockState newState, CallbackInfo ci
     ) {
-        if (ip_extraExtractor != null) {
-            ip_extraExtractor.setBlockDirty(pos, oldState, newState);
+        for (LevelExtractor extractor : ip_extraExtractors) {
+            extractor.setBlockDirty(pos, oldState, newState);
         }
     }
     
     @Inject(method = "setSectionDirtyWithNeighbors", at = @At("TAIL"))
     private void onSetSectionDirtyWithNeighbors(int chunkX, int chunkY, int chunkZ, CallbackInfo ci) {
-        if (ip_extraExtractor != null) {
-            ip_extraExtractor.setSectionDirtyWithNeighbors(chunkX, chunkY, chunkZ);
+        for (LevelExtractor extractor : ip_extraExtractors) {
+            extractor.setSectionDirtyWithNeighbors(chunkX, chunkY, chunkZ);
         }
     }
     
@@ -133,8 +133,8 @@ public abstract class MixinClientLevel implements IEClientWorld {
         int minSectionX, int minSectionY, int minSectionZ, int maxSectionX, int maxSectionY, int maxSectionZ,
         CallbackInfo ci
     ) {
-        if (ip_extraExtractor != null) {
-            ip_extraExtractor.setSectionRangeDirty(minSectionX, minSectionY, minSectionZ, maxSectionX, maxSectionY, maxSectionZ);
+        for (LevelExtractor extractor : ip_extraExtractors) {
+            extractor.setSectionRangeDirty(minSectionX, minSectionY, minSectionZ, maxSectionX, maxSectionY, maxSectionZ);
         }
     }
     

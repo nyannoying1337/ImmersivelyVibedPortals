@@ -187,6 +187,32 @@ public class ClientDebugCommand {
             })
         );
         
+        // why terrain is missing in portal views, see ViewDiagnostics
+        builder = builder.then(ClientCommands
+            .literal("report_portal_views")
+            .executes(context -> {
+                if (!qouteall.imm_ptl.core.render.ViewDiagnostics.enabled) {
+                    qouteall.imm_ptl.core.render.ViewDiagnostics.enabled = true;
+                    CHelper.printChat("Portal view diagnostics enabled. Run the command again for a report.");
+                    return 0;
+                }
+                // a low performance level shrinks the terrain loaded and rendered behind portals
+                StringBuilder sb = new StringBuilder(String.format(java.util.Locale.ROOT,
+                    "Performance level %s (average FPS %d, free memory %d MB). Portal views of the last frame (grid moves: %d):",
+                    qouteall.imm_ptl.core.miscellaneous.ClientPerformanceMonitor.level,
+                    qouteall.imm_ptl.core.miscellaneous.ClientPerformanceMonitor.getAverageFps(),
+                    qouteall.imm_ptl.core.miscellaneous.ClientPerformanceMonitor.getAverageFreeMemoryMB(),
+                    qouteall.imm_ptl.core.render.ViewDiagnostics.getLastFrameGridMoves()
+                ));
+                for (var report : qouteall.imm_ptl.core.render.ViewDiagnostics.getLastFrame()) {
+                    sb.append("\n").append(report);
+                }
+                CHelper.printChat(sb.toString());
+                qouteall.imm_ptl.core.render.ViewDiagnostics.enabled = false;
+                return 0;
+            })
+        );
+
         builder.then(ClientCommands.literal("report_loaded_portals")
             .executes(context -> {
                 for (ClientLevel world : ClientWorldLoader.getClientWorlds()) {

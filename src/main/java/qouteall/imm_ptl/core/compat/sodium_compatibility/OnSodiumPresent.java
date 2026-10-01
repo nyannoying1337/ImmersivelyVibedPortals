@@ -1,5 +1,6 @@
 package qouteall.imm_ptl.core.compat.sodium_compatibility;
 
+import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.map.ChunkStatus;
 import net.caffeinemc.mods.sodium.client.render.chunk.map.ChunkTrackerHolder;
 import net.caffeinemc.mods.sodium.client.render.texture.SpriteUtil;
@@ -7,6 +8,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import qouteall.imm_ptl.core.compat.mixin.sodium.IESodiumWorldRendererAccessor;
 
 /**
  * Only loaded when Sodium is present.
@@ -30,6 +32,20 @@ public class OnSodiumPresent extends SodiumInterface.Invoker {
     public void onClientChunkLoaded(ClientLevel world, int chunkX, int chunkZ) {
         ChunkTrackerHolder.get(world)
             .onChunkStatusAdded(chunkX, chunkZ, ChunkStatus.FLAG_HAS_BLOCK_DATA);
+    }
+
+    @Override
+    public int @org.jetbrains.annotations.Nullable [] getViewSectionStats() {
+        SodiumWorldRenderer worldRenderer = SodiumWorldRenderer.instanceNullable();
+        if (worldRenderer == null) {
+            return null;
+        }
+        var manager = ((IESodiumWorldRendererAccessor) worldRenderer).ip_getRenderSectionManager();
+        if (manager == null) {
+            return null;
+        }
+        IESodiumRenderSectionManager ieManager = (IESodiumRenderSectionManager) manager;
+        return new int[]{ieManager.ip_getSectionsWithGeometry(), ieManager.ip_getPendingBuilds()};
     }
 
     @Override

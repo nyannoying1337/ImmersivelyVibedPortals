@@ -74,26 +74,32 @@ clip plane on the GPU (entities are batched per render type into one vertex buff
 are tagged, and `RenderTypeFeatureRenderer` builds tagged submits with a vertex consumer that cuts every quad by
 the planes (quads; triangle strips like leashes are clipped per triangle). Works the same with Sodium and Iris.
 
-### ViewArea of other dimensions
-The renderer of a dimension other than the main view's one is only used by portal views. Its ViewArea (a fixed grid
-around a center) is centered once per frame on the middle of the last frame's view cameras, instead of on every view
-camera: re-centering resets the sections that move in the grid, so several views of different places would reset
-and recompile the grid edges every view. A view too near the grid edge gets its own center. Its occlusion graph is
-not updated in views (views use `VisibleSectionDiscovery`); it's rebuilt when that renderer becomes the main one.
-The dirty sections of a view are collected around its camera, so some may be outside the grid then; they're skipped
-when compiling (`MixinLevelRenderer_ForceMainThreadRebuild`) and reset/compiled when the grid moves over them.
+### Renderers and grids for portal views
+A LevelRenderer's ViewArea is a fixed grid (the render distance around a center) and only shows the sections in it.
+Moving it resets the sections that move in it, and `LevelExtractor.extract` looks up the view's sections before
+`LevelRenderer.render` would move it (vanilla lags one frame; a view sharing a renderer would always use the grid of
+the previous view). So `DimensionRenderHelper.selectForView` picks the renderer of each view before it is extracted:
+a renderer whose grid covers the view camera (at least 4 sections from its edge) as it is; else the nearest renderer
+of that dimension not used by another view in this frame, its grid moved to the camera now (`IELevelRenderer_ViewGrid`);
+else a new extra renderer (up to 3 per dimension: own LevelRenderer and LevelExtractor on the same ClientLevel, which
+forwards block changes to them, `IEClientWorld.ip_setExtraExtractors`; they share the dimension's lightmap and are
+released after 600 frames without use); else the nearest one as it is (partial terrain, never grids moving every frame).
+Before, two views of one dimension far apart moved one grid back and forth every frame and showed no terrain at all
+(feature test "terrain behind a far portal"). The main view's renderer stays centered on the player and is never moved
+by views. `LevelRenderer.repositionCamera` is skipped in all portal views.
+All extractors of a level take the section emptiness and chunk load changes from the same ClientLevel, and each change
+is given out once, so an extra renderer's extraction passes them on to the dimension's own renderer's graph
+(MixinLevelRenderer `wrapSectionOcclusionGraphUpdate`); otherwise sections that got blocks stayed "empty" for the main
+view and were not rendered (you could see through them).
+The occlusion graph of a renderer is not updated in views (views use `VisibleSectionDiscovery`); it's rebuilt when that
+renderer becomes the main one. The dirty sections of a view are collected around its camera, so some may be outside the
+grid; they're skipped when compiling (`MixinLevelRenderer_ForceMainThreadRebuild`) and reset/compiled when the grid
+moves over them. Not with Sodium, whose renderer is not bound to a grid. Visual test: `far_portal`, `far_portal_changed`.
 
-### Far views of the player's dimension
-The main view's renderer stays centered on the player, so a portal to a far place of the same dimension
-(beyond the render distance) would show nothing. Such views (camera less than 4 sections from the edge of the main
-grid) use a second renderer of the dimension (`DimensionRenderHelper.getOrCreateFarHelper`): its own LevelRenderer
-and LevelExtractor bound to the same ClientLevel, which forwards block changes to it (`IEClientWorld.ip_setExtraExtractor`).
-It shares the dimension's lightmap and is released after 600 frames without use.
-Both extractors take the section emptiness and chunk load changes from the same ClientLevel, and each change is given
-out once, so the far renderer's extraction passes them on to the main renderer's graph (MixinLevelRenderer
-`wrapSectionOcclusionGraphUpdate`); otherwise sections that got blocks stayed "empty" for the main view and were
-not rendered (you could see through them). Not with Sodium, whose renderer is
-not bound to a grid. Visual test: `far_portal`, `far_portal_changed`.
+Why terrain is missing in a view: `ViewDiagnostics` (`/imm_ptl_client_debug report_portal_views`, run twice) reports per
+view the visible sections without a loaded chunk (chunk loading: the server loads less behind a portal the further the
+player is from it, and much less at a low client performance level, `ChunkVisibility`), the unbuilt sections of loaded
+chunks (section compiling) and the grid moves.
 
 ### Hidden portals
 1.21.1 skipped portals hidden behind blocks with GL occlusion queries; renderpearl has none. `PortalOcclusionCulling`

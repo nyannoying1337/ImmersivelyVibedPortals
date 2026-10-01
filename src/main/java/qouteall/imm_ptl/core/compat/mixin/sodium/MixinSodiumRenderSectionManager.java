@@ -1,6 +1,7 @@
 package qouteall.imm_ptl.core.compat.mixin.sodium;
 
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
+import net.caffeinemc.mods.sodium.client.render.chunk.lists.DeferredTaskList;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import net.caffeinemc.mods.sodium.client.util.FogParameters;
 import net.minecraft.client.Camera;
@@ -9,6 +10,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import qouteall.imm_ptl.core.compat.sodium_compatibility.IESodiumRenderSectionManager;
 import qouteall.imm_ptl.core.render.PortalViewRenderer;
 
 /**
@@ -19,9 +21,25 @@ import qouteall.imm_ptl.core.render.PortalViewRenderer;
  * with Sodium's fallback traversal, which only depends on the current viewport.
  */
 @Mixin(value = RenderSectionManager.class, remap = false)
-public abstract class MixinSodiumRenderSectionManager {
+public abstract class MixinSodiumRenderSectionManager implements IESodiumRenderSectionManager {
     @Shadow
     private boolean needsRenderListUpdate;
+
+    @Shadow
+    private DeferredTaskList taskLists;
+
+    @Shadow
+    public abstract int getVisibleChunkCount();
+
+    @Override
+    public int ip_getSectionsWithGeometry() {
+        return getVisibleChunkCount();
+    }
+
+    @Override
+    public int ip_getPendingBuilds() {
+        return taskLists == null ? 0 : taskLists.size();
+    }
 
     @Shadow
     protected abstract void renderOutOfGraph(Viewport viewport, FogParameters fogParameters);

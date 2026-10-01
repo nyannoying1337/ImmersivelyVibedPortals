@@ -48,7 +48,7 @@ import java.util.List;
  * <p>
  * The vanilla {@link ViewArea} is a fixed grid (render distance radius) around its LevelRenderer's camera.
  * For a portal view of the main view's dimension that grid stays centered on the main camera, so a view far
- * away from the player uses a second renderer of that dimension (DimensionRenderHelper.getOrCreateFarHelper,
+ * away from the player uses another renderer of that dimension (DimensionRenderHelper.selectForView,
  * chosen in PortalViewRenderer.selectRenderHelper). (1.21.1 used ImmPtlViewArea, a hash-map based ViewArea.
  * 26.3 has no ViewArea replacement point: the RotatingSectionStorage indexes are used by SectionOcclusionGraph.)
  */

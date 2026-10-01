@@ -35,6 +35,14 @@ public class SodiumInterface {
         
         }
         
+        /**
+         * For the view rendered last with the current LevelRenderer: {visible sections with geometry, pending builds},
+         * null without Sodium (see ViewDiagnostics).
+         */
+        public int @org.jetbrains.annotations.Nullable [] getViewSectionStats() {
+            return null;
+        }
+
         public void onClientChunkUnloaded(ClientLevel world, int chunkX, int chunkZ) {
         
         }

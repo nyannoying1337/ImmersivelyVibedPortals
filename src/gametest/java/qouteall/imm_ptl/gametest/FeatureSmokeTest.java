@@ -104,9 +104,15 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             srv.runCommand("gamerule doDaylightCycle false");
             setFlying(srv, true);
 
-            // gradle -Pimm_ptl.featureTest.only=hidden: only the hidden portal culling scene
-            if ("hidden".equals(System.getProperty("imm_ptl.featureTest.only"))) {
-                section("hidden portal culling", () -> hiddenPortalCulling(ctx, srv));
+            // gradle -Pimm_ptl.featureTest.only=hidden|terrain: only that scene
+            String only = System.getProperty("imm_ptl.featureTest.only");
+            if ("hidden".equals(only) || "terrain".equals(only)) {
+                if ("hidden".equals(only)) {
+                    section("hidden portal culling", () -> hiddenPortalCulling(ctx, srv));
+                }
+                else {
+                    section("terrain behind a far portal", () -> farPortalTerrain(ctx, srv));
+                }
                 writeReport();
                 if (!failures.isEmpty()) {
                     throw new AssertionError(failures.size() + " feature checks failed:\n" + String.join("\n", failures));
@@ -121,6 +127,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             section("dimension stack", () -> dimensionStack(ctx, srv));
             section("rotating portal", () -> rotatingPortal(ctx, srv));
             section("hidden portal culling", () -> hiddenPortalCulling(ctx, srv));
+            section("terrain behind a far portal", () -> farPortalTerrain(ctx, srv));
             section("command stick", () -> commandStick(ctx, srv));
             section("strip clipping (leashes)", this::stripClipping);
             section("breakable mirror", () -> breakableMirror(ctx, srv));
@@ -650,6 +657,117 @@ public class FeatureSmokeTest implements FabricClientGameTest {
                 p.discard();
             }
         });
+    }
+
+    /**
+     * The terrain seen through a nether portal whose other side is far from anywhere the player has been
+     * (generated and loaded fresh), like the report of terrain missing in a portal view that never filled in.
+     * ViewDiagnostics tells why terrain would be missing: chunks not loaded, sections not built, or neither.
+     * Viewed from 3 blocks away, from inside the frame, and with a second far portal in view
+     * (two views of the overworld far apart share one renderer grid).
+     */
+    private void farPortalTerrain(ClientGameTestContext ctx, TestServerContext srv) {
+        String inNether = "execute in minecraft:the_nether run ";
+        int x0 = 999, y = 66, z = 1000;
+        srv.runCommand(inNether + "tp Player0 1001.0 90 1010.0 180 0");
+        ctx.waitTicks(60);
+        srv.runCommand(inNether + String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:air",
+            x0 - 5, y - 1, z - 6, x0 + 8, y + 10, z + 10));
+        srv.runCommand(inNether + String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:stone",
+            x0 - 5, y - 1, z - 6, x0 + 8, y - 1, z + 10));
+        srv.runCommand(inNether + String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:obsidian",
+            x0, y, z, x0 + 3, y + 4, z));
+        srv.runCommand(inNether + String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:air",
+            x0 + 1, y + 1, z, x0 + 2, y + 3, z));
+        srv.runCommand(inNether + String.format(Locale.ROOT, "setblock %d %d %d minecraft:fire", x0 + 1, y + 1, z));
+
+        AABB frameBox = new AABB(x0 - 1, y - 1, z - 2, x0 + 5, y + 6, z + 3);
+        boolean generated = waitFor(ctx, 1200, () -> srv.computeOnServer(s ->
+            s.getLevel(Level.NETHER).getEntitiesOfClass(Portal.class, frameBox).size() >= 2
+        ));
+        check("far portal terrain: lighting the frame in the nether created portals", generated, "");
+        if (!generated) {
+            return;
+        }
+        Vec3 dest = srv.computeOnServer(s -> s.getLevel(Level.NETHER).getEntitiesOfClass(Portal.class, frameBox).get(0).getDestPos());
+        boolean destPortals = waitFor(ctx, 1200, () -> srv.computeOnServer(s ->
+            !s.overworld().getEntitiesOfClass(Portal.class, new AABB(dest, dest).inflate(3)).isEmpty()
+        ));
+        check("far portal terrain: the overworld side has portals", destPortals, "dest " + dest);
+
+        srv.runCommand(inNether + String.format(Locale.ROOT, "tp Player0 %.1f %d %.1f 180 0", x0 + 2.0, y, z + 3.5));
+        ctx.waitTicks(20);
+        ctx.runOnClient(mc -> {
+            mc.player.getAbilities().flying = true;
+            mc.player.onUpdateAbilities();
+            qouteall.imm_ptl.core.render.ViewDiagnostics.enabled = true;
+        });
+
+        List<String> log = new ArrayList<>();
+        log.add("destination " + dest);
+        String front = sampleTerrain(ctx, "front", 6, 100, log);
+        screenshot(ctx, "far_portal_terrain_front");
+
+        // standing in the frame, just before the portal plane (z + 0.5)
+        srv.runCommand(inNether + String.format(Locale.ROOT, "tp Player0 %.1f %d %.2f 180 0", x0 + 2.0, y + 1, z + 0.85));
+        ctx.waitTicks(20);
+        String inFrame = sampleTerrain(ctx, "in frame", 2, 100, log);
+        screenshot(ctx, "far_portal_terrain_in_frame");
+
+        // a second portal in view, to another far place of the overworld
+        srv.runOnServer(s -> {
+            Portal p = Portal.ENTITY_TYPE.create(s.getLevel(Level.NETHER), net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+            p.setOriginPos(new Vec3(x0 - 2.5, y + 2.5, z - 0.5));
+            p.setOrientationAndSize(new Vec3(1, 0, 0), new Vec3(0, 1, 0), 3, 4);
+            p.setDestinationDimension(Level.OVERWORLD);
+            p.setDestination(dest.add(3000, 0, 3000));
+            qouteall.imm_ptl.core.McHelper.spawnServerEntity(p);
+        });
+        srv.runCommand(inNether + String.format(Locale.ROOT, "tp Player0 %.1f %d %.1f 180 0", x0 + 0.5, y, z + 6.5));
+        ctx.waitTicks(20);
+        String two = sampleTerrain(ctx, "two far portals", 4, 100, log);
+        screenshot(ctx, "far_portal_terrain_two");
+
+        ctx.runOnClient(mc -> qouteall.imm_ptl.core.render.ViewDiagnostics.enabled = false);
+        // back to the overworld for the next sections (they run commands as the player)
+        srv.runOnServer(s -> s.getLevel(Level.NETHER).getEntitiesOfClass(Portal.class, new AABB(x0 - 6, y - 2, z - 3, x0 - 1, y + 7, z + 2))
+            .forEach(p -> p.discard()));
+        srv.runCommand("execute in minecraft:overworld run tp Player0 0.5 -58 0.5");
+        ctx.waitTicks(40);
+        try {
+            Files.write(out.resolve("far_portal_terrain.txt"), log);
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        check("far portal terrain: the view has terrain, all buildable sections built (front)", front == null, String.valueOf(front));
+        check("far portal terrain: the view has terrain, all buildable sections built (in the frame)", inFrame == null, String.valueOf(inFrame));
+        check("far portal terrain: both views have terrain, all buildable sections built (two far portals)", two == null, String.valueOf(two));
+    }
+
+    /**
+     * Samples the portal view diagnostics; returns null if in the last sample every view has terrain and no unbuilt
+     * sections, otherwise that sample.
+     */
+    private static @org.jetbrains.annotations.Nullable String sampleTerrain(
+        ClientGameTestContext ctx, String name, int samples, int interval, List<String> log
+    ) {
+        String last = null;
+        boolean bad = false;
+        for (int i = 0; i < samples; i++) {
+            ctx.waitTicks(interval);
+            last = ctx.computeOnClient(mc -> {
+                StringBuilder sb = new StringBuilder("grid moves " + qouteall.imm_ptl.core.render.ViewDiagnostics.getLastFrameGridMoves());
+                for (var r : qouteall.imm_ptl.core.render.ViewDiagnostics.getLastFrame()) {
+                    sb.append(" | ").append(r);
+                }
+                return sb.toString();
+            });
+            bad = ctx.computeOnClient(mc -> qouteall.imm_ptl.core.render.ViewDiagnostics.getLastFrame().stream()
+                .anyMatch(r -> r.hasProblem()));
+            log.add(name + " +" + (i + 1) * interval + " ticks: " + last);
+        }
+        return bad ? last : null;
     }
 
     private static String hiddenPortalDiagnostics(ClientGameTestContext ctx) {

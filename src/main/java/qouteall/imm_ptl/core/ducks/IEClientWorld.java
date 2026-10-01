@@ -29,8 +29,8 @@ public interface IEClientWorld {
     void ip_setTickRateManager(TickRateManager cond);
     
     /**
-     * A second extractor of this level (far portal views, see DimensionRenderHelper.getOrCreateFarHelper)
-     * that also gets the block/section change notifications.
+     * The extra extractors of this level (portal views of other places of the dimension,
+     * see DimensionRenderHelper.selectForView). The level forwards block and section changes to them too.
      */
-    void ip_setExtraExtractor(@Nullable net.minecraft.client.renderer.extract.LevelExtractor extractor);
+    void ip_setExtraExtractors(java.util.List<net.minecraft.client.renderer.extract.LevelExtractor> extractors);
 }

@@ -4,14 +4,21 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.Lightmap;
+import net.minecraft.client.renderer.ViewArea;
 import net.minecraft.client.renderer.extract.LevelExtractor;
+import net.minecraft.core.SectionPos;
 import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.ducks.IEClientWorld;
 import qouteall.imm_ptl.core.ducks.IECloudRenderer;
 import qouteall.imm_ptl.core.ducks.IEGameRenderer;
+import qouteall.imm_ptl.core.ducks.IELevelRenderer_ViewGrid;
 import qouteall.imm_ptl.core.ducks.IEMinecraftClient;
 import qouteall.q_misc_util.Helper;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The rendering objects of one client dimension.
@@ -35,13 +42,18 @@ public class DimensionRenderHelper {
     // true for the instances that vanilla created (Minecraft.levelRenderer etc. at initialization)
     public final boolean isVanillaOriginal;
 
-    // false for a far helper, which uses the lightmap of its dimension's helper
+    // false for an extra helper, which uses the lightmap of its dimension's helper
     private final boolean ownsLightmap;
 
-    // see getOrCreateFarHelper
-    private @Nullable DimensionRenderHelper farHelper;
+    // see selectForView
+    private final List<DimensionRenderHelper> extraHelpers = new ArrayList<>();
     private long lastUsedFrame;
-    private static final int FAR_HELPER_IDLE_FRAMES = 600;
+    // the frame in which a portal view last used this helper's grid (it's not moved again in that frame)
+    private long gridUsedFrame = -1;
+    private static final int EXTRA_HELPER_IDLE_FRAMES = 600;
+    private static final int MAX_EXTRA_HELPERS = 3;
+    // a view camera less than this many sections from the edge of a grid doesn't use that grid
+    private static final int GRID_MARGIN_SECTIONS = 4;
 
 
     // the frame index at which the lightmap was last rendered, see RenderStates.frameIndex
@@ -67,49 +79,141 @@ public class DimensionRenderHelper {
     }
 
     /**
-     * A second renderer/extractor of this dimension, for portal views far away from where this helper's
-     * ViewArea (a fixed grid of the render distance) is. The renderer of the player's dimension is centered on the
-     * player, so without it a portal to a far-away place of the same dimension shows nothing.
-     * It renders the same ClientLevel (which forwards block changes to it, see IEClientWorld.ip_setExtraExtractor)
-     * and is released when it's not used for a while.
+     * The helper to render a portal view of this dimension whose camera is at {@code cameraPos}.
+     * <p>
+     * A LevelRenderer's ViewArea is a fixed grid (the render distance around its center) and can only show the
+     * sections in it. Moving the grid resets the sections that move in it, and views look up their sections before
+     * vanilla would move it. So several views of one dimension far apart can't share one renderer: moving its grid
+     * back and forth every frame, their sections were never built and they showed no terrain (or only the part in
+     * both grids). So each dimension has this helper plus up to {@link #MAX_EXTRA_HELPERS} extra helpers (their own
+     * renderer and extractor on the same ClientLevel, sharing the lightmap), and a view uses:
+     * <ol>
+     *     <li>a helper whose grid covers the camera already (no move),</li>
+     *     <li>else the nearest helper that no view used yet in this frame, its grid moved to the camera now,
+     *     before the view is extracted (or a new extra helper),</li>
+     *     <li>else the nearest helper as it is (partial terrain rather than grids moving every frame).</li>
+     * </ol>
+     * The grid of the player's dimension's own helper is the main view's (centered on the player): it is never moved.
+     * Extra helpers are released when they're not used for a while.
      */
-    public DimensionRenderHelper getOrCreateFarHelper() {
-        if (farHelper == null) {
-            Pending pending = createNew();
-            setExtractorLevel(pending.levelRenderer(), pending.levelExtractor(), world);
-            ResourceManager resourceManager = client.getResourceManager();
-            pending.levelExtractor().onResourceManagerReload(resourceManager);
-            ((IECloudRenderer) pending.levelRenderer().cloudRenderer()).ip_reloadNow(resourceManager);
-            farHelper = new DimensionRenderHelper(
-                world, pending.levelRenderer(), pending.levelExtractor(), lightmap, false, false
-            );
-            ((IEClientWorld) world).ip_setExtraExtractor(farHelper.levelExtractor);
-            Helper.log("Created far view renderer for " + world.dimension().identifier());
+    public DimensionRenderHelper selectForView(Vec3 cameraPos, boolean isPlayerDimension) {
+        SectionPos cameraSection = SectionPos.of(cameraPos);
+        long frame = RenderStates.frameIndex;
+
+        List<DimensionRenderHelper> all = new ArrayList<>(extraHelpers.size() + 1);
+        all.add(this);
+        all.addAll(extraHelpers);
+
+        DimensionRenderHelper result = null;
+        for (DimensionRenderHelper helper : all) {
+            if (helper.gridCovers(cameraSection)) {
+                result = helper;
+                break;
+            }
         }
-        farHelper.lastUsedFrame = RenderStates.frameIndex;
-        return farHelper;
+
+        if (result == null) {
+            DimensionRenderHelper movable = null;
+            for (DimensionRenderHelper helper : all) {
+                boolean fixed = helper == this && isPlayerDimension;
+                if (!fixed && helper.gridUsedFrame != frame
+                    && (movable == null || helper.gridDistance(cameraSection) < movable.gridDistance(cameraSection))
+                ) {
+                    movable = helper;
+                }
+            }
+            if (movable == null && extraHelpers.size() < MAX_EXTRA_HELPERS) {
+                movable = createExtraHelper();
+            }
+            if (movable != null) {
+                if (((IELevelRenderer_ViewGrid) movable.levelRenderer).ip_moveGridForView(cameraSection, cameraPos)) {
+                    qouteall.imm_ptl.core.render.ViewDiagnostics.onGridMoved();
+                }
+                result = movable;
+            }
+        }
+
+        if (result == null) {
+            for (DimensionRenderHelper helper : all) {
+                if (result == null || helper.gridDistance(cameraSection) < result.gridDistance(cameraSection)) {
+                    result = helper;
+                }
+            }
+        }
+
+        result.gridUsedFrame = frame;
+        result.lastUsedFrame = frame;
+        return result;
+    }
+
+    private boolean gridCovers(SectionPos cameraSection) {
+        ViewArea viewArea = levelRenderer.viewArea();
+        if (viewArea == null) {
+            return false;
+        }
+        SectionPos center = viewArea.getCameraSectionPos();
+        int maxOffset = Math.max(viewArea.getViewDistance() - GRID_MARGIN_SECTIONS, 1);
+        return Math.abs(cameraSection.x() - center.x()) <= maxOffset
+            && Math.abs(cameraSection.z() - center.z()) <= maxOffset;
+    }
+
+    private int gridDistance(SectionPos cameraSection) {
+        ViewArea viewArea = levelRenderer.viewArea();
+        if (viewArea == null) {
+            return Integer.MAX_VALUE;
+        }
+        SectionPos center = viewArea.getCameraSectionPos();
+        return Math.max(Math.abs(cameraSection.x() - center.x()), Math.abs(cameraSection.z() - center.z()));
+    }
+
+    private DimensionRenderHelper createExtraHelper() {
+        Pending pending = createNew();
+        setExtractorLevel(pending.levelRenderer(), pending.levelExtractor(), world);
+        ResourceManager resourceManager = client.getResourceManager();
+        pending.levelExtractor().onResourceManagerReload(resourceManager);
+        ((IECloudRenderer) pending.levelRenderer().cloudRenderer()).ip_reloadNow(resourceManager);
+        DimensionRenderHelper extra = new DimensionRenderHelper(
+            world, pending.levelRenderer(), pending.levelExtractor(), lightmap, false, false
+        );
+        extraHelpers.add(extra);
+        updateExtraExtractors();
+        Helper.log("Created extra view renderer " + extraHelpers.size() + " for " + world.dimension().identifier());
+        return extra;
+    }
+
+    // the level forwards block changes to the extra extractors, see IEClientWorld.ip_setExtraExtractors
+    private void updateExtraExtractors() {
+        ((IEClientWorld) world).ip_setExtraExtractors(
+            extraHelpers.stream().map(helper -> helper.levelExtractor).toList()
+        );
     }
 
     /**
-     * If the renderer is a far helper's (see getOrCreateFarHelper), the renderer of the helper it belongs to.
-     * Both extractors take the section and chunk load changes from the same ClientLevel, and each change is given out
-     * once, so the far helper's extraction passes them on to that renderer (see MixinLevelRenderer).
+     * If the renderer is an extra helper's (see selectForView), the renderer of the helper it belongs to.
+     * All extractors of a level take the section and chunk load changes from the same ClientLevel, and each change is
+     * given out once, so an extra helper's extraction passes them on to that renderer (see MixinLevelRenderer).
      */
-    public static @Nullable LevelRenderer getFarHelperOwnerRenderer(LevelRenderer levelRenderer) {
+    public static @Nullable LevelRenderer getExtraHelperOwnerRenderer(LevelRenderer levelRenderer) {
         for (DimensionRenderHelper helper : qouteall.imm_ptl.core.ClientWorldLoader.RENDER_HELPER_MAP.values()) {
-            if (helper.farHelper != null && helper.farHelper.levelRenderer == levelRenderer) {
-                return helper.levelRenderer;
+            for (DimensionRenderHelper extra : helper.extraHelpers) {
+                if (extra.levelRenderer == levelRenderer) {
+                    return helper.levelRenderer;
+                }
             }
         }
         return null;
     }
 
-    private void releaseFarHelper() {
-        if (farHelper != null) {
-            ((IEClientWorld) world).ip_setExtraExtractor(null);
-            farHelper.cleanUp();
-            farHelper = null;
-            Helper.log("Released far view renderer for " + world.dimension().identifier());
+    private void releaseExtraHelper(DimensionRenderHelper extra) {
+        extraHelpers.remove(extra);
+        updateExtraExtractors();
+        extra.cleanUp();
+        Helper.log("Released an extra view renderer for " + world.dimension().identifier());
+    }
+
+    private void releaseExtraHelpers() {
+        for (DimensionRenderHelper extra : new ArrayList<>(extraHelpers)) {
+            releaseExtraHelper(extra);
         }
     }
 
@@ -194,8 +298,8 @@ public class DimensionRenderHelper {
         if (!isCurrent()) {
             levelRenderer.resize(width, height);
         }
-        if (farHelper != null) {
-            farHelper.onResize(width, height);
+        for (DimensionRenderHelper extra : extraHelpers) {
+            extra.onResize(width, height);
         }
     }
     
@@ -203,12 +307,12 @@ public class DimensionRenderHelper {
         if (!isCurrent()) {
             levelRenderer.endFrame();
         }
-        if (farHelper != null) {
-            if (RenderStates.frameIndex - farHelper.lastUsedFrame > FAR_HELPER_IDLE_FRAMES) {
-                releaseFarHelper();
+        for (DimensionRenderHelper extra : new ArrayList<>(extraHelpers)) {
+            if (RenderStates.frameIndex - extra.lastUsedFrame > EXTRA_HELPER_IDLE_FRAMES) {
+                releaseExtraHelper(extra);
             }
             else {
-                farHelper.onEndFrame();
+                extra.onEndFrame();
             }
         }
     }
@@ -217,8 +321,8 @@ public class DimensionRenderHelper {
     public void onResourceReload(ResourceManager resourceManager) {
         levelExtractor.onResourceManagerReload(resourceManager);
         ((IECloudRenderer) levelRenderer.cloudRenderer()).ip_reloadNow(resourceManager);
-        if (farHelper != null) {
-            farHelper.onResourceReload(resourceManager);
+        for (DimensionRenderHelper extra : extraHelpers) {
+            extra.onResourceReload(resourceManager);
         }
     }
 
@@ -226,8 +330,8 @@ public class DimensionRenderHelper {
         if (!isCurrent()) {
             levelExtractor.allChanged();
         }
-        if (farHelper != null) {
-            farHelper.levelExtractor.allChanged();
+        for (DimensionRenderHelper extra : extraHelpers) {
+            extra.levelExtractor.allChanged();
         }
     }
     
@@ -236,7 +340,7 @@ public class DimensionRenderHelper {
      * (see ClientWorldLoader.cleanUp), so that vanilla keeps using its own objects for the next level.
      */
     public void cleanUp() {
-        releaseFarHelper();
+        releaseExtraHelpers();
         if (!isVanillaOriginal) {
             setExtractorLevel(levelRenderer, levelExtractor, null);
             levelRenderer.close();
