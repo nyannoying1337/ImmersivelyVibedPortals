@@ -10,7 +10,10 @@
     "sodium.MixinSodiumWorldRenderer",
     "sodium.IESodiumWorldRendererAccessor",
     "iris.MixinIrisTransformPatcher",
-    "iris.MixinIrisShaderCreator"
+    "iris.MixinIrisShaderCreator",
+    "iris.MixinIrisCommonUniforms",
+    "iris.MixinIrisHardcodedCustomUniforms",
+    "entityculling.MixinEntityCullingHelper"
   ],
   "injectors": {
     "defaultRequire": 1

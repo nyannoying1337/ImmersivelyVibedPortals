@@ -49,6 +49,12 @@ public class OnSodiumPresent extends SodiumInterface.Invoker {
     }
 
     @Override
+    public boolean isBoxVisible(double x1, double y1, double z1, double x2, double y2, double z2) {
+        SodiumWorldRenderer worldRenderer = SodiumWorldRenderer.instanceNullable();
+        return worldRenderer == null || worldRenderer.isBoxVisible(x1, y1, z1, x2, y2, z2);
+    }
+
+    @Override
     public void onClientChunkUnloaded(ClientLevel world, int chunkX, int chunkZ) {
         ChunkTrackerHolder.get(world)
             .onChunkStatusRemoved(chunkX, chunkZ, ChunkStatus.FLAG_HAS_BLOCK_DATA);

@@ -92,6 +92,10 @@ public class PortalVisualTest implements FabricClientGameTest {
             mc.options.renderDistance().set(8);
             // (the gametest framework turns clouds off)
             mc.options.cloudStatus().set(CloudStatus.FANCY);
+            // -Pimm_ptl.visualTest.improvedTransparency=true: order-independent transparency ("Improved Transparency")
+            if (Boolean.getBoolean("imm_ptl.visualTest.improvedTransparency")) {
+                mc.options.improvedTransparency().set(true);
+            }
         });
         if (Boolean.getBoolean("imm_ptl.visualTest.shaders")) {
             // Iris with the test shaderpack (-PwithShaders)

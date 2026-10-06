@@ -32,6 +32,10 @@ import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 public abstract class MixinCamera implements IECamera {
     @Unique
     private static final float PORTAL_VIEW_NEAR_PLANE = 0.005F;
+    // with a shaderpack: vanilla's, because Iris gives the packs a fixed "near" uniform of 0.05, which they use to
+    // compute distances from depth (fog, sky); with another near plane distant terrain broke up into streaks
+    @Unique
+    private static final float PORTAL_VIEW_NEAR_PLANE_SHADERPACK = 0.05F;
     
     @Shadow
     private Vec3 position;
@@ -202,7 +206,9 @@ public abstract class MixinCamera implements IECamera {
         // right behind the destination portal plane, and the content just beyond it must not be near-clipped.
         // (The original mod used GL depth clamp for this.) Reversed-Z float depth keeps the precision.
         setupPerspective(
-            PORTAL_VIEW_NEAR_PLANE, depthFar, fov,
+            qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface.invoker.isShaderpackInUse() ?
+                PORTAL_VIEW_NEAR_PLANE_SHADERPACK : PORTAL_VIEW_NEAR_PLANE,
+            depthFar, fov,
             client.getWindow().getWidth(), client.getWindow().getHeight()
         );
         

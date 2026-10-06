@@ -1,6 +1,7 @@
 package qouteall.imm_ptl.core.mixin.client.render;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -9,6 +10,7 @@ import net.minecraft.client.renderer.GlobalSettingsUniform;
 import net.minecraft.client.renderer.Lightmap;
 import net.minecraft.client.renderer.LightmapRenderStateExtractor;
 import net.minecraft.client.renderer.fog.FogRenderer;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.util.profiling.Profiler;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
@@ -63,6 +65,12 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
 
     @Shadow
     protected abstract void extractCamera(DeltaTracker deltaTracker, float worldPartialTicks);
+
+    @Shadow
+    protected abstract void bobHurt(CameraRenderState cameraState, PoseStack poseStack);
+
+    @Shadow
+    protected abstract void bobView(CameraRenderState cameraState, PoseStack poseStack);
 
     @Unique
     private @Nullable RenderTarget ip_mainRenderTargetOverride;
@@ -283,5 +291,13 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
     @Override
     public void ip_extractCamera(DeltaTracker deltaTracker, float worldPartialTicks) {
         extractCamera(deltaTracker, worldPartialTicks);
+    }
+
+    @Override
+    public void ip_applyViewBobbing(CameraRenderState cameraState, PoseStack poseStack) {
+        bobHurt(cameraState, poseStack);
+        if (minecraft.options.bobView().get()) {
+            bobView(cameraState, poseStack);
+        }
     }
 }

@@ -60,6 +60,15 @@ public class IrisTestPack {
                 zip, Iris.getShaderpacksDirectory().resolve(zip.getFileName().toString()),
                 StandardCopyOption.REPLACE_EXISTING
             );
+            // gradle -Pimm_ptl.visualTest.packOptions=NAME=value,NAME=value: the pack's options (Iris reads <pack>.txt)
+            String options = System.getProperty("imm_ptl.visualTest.packOptions", "");
+            Path optionsFile = Iris.getShaderpacksDirectory().resolve(zip.getFileName().toString() + ".txt");
+            if (options.isEmpty()) {
+                Files.deleteIfExists(optionsFile);
+            }
+            else {
+                Files.writeString(optionsFile, String.join("\n", options.split(",")) + "\n");
+            }
             select(zip.getFileName().toString());
         }
         catch (IOException e) {

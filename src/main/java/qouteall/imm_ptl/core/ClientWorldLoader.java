@@ -307,6 +307,18 @@ public class ClientWorldLoader {
         return result;
     }
 
+    /**
+     * Whether the client worlds are available ({@link #initializeIfNeeded} can run).
+     * Not while a vanilla dimension change is in progress: the worlds are cleaned up when it starts, and the
+     * respawn packet handling renders a frame (the level loading screen) while the player is still in the old level.
+     */
+    public static boolean isReady() {
+        return isInitialized || (
+            CLIENT.level != null && CLIENT.levelRenderer != null && CLIENT.player != null
+                && CLIENT.player.level() == CLIENT.level
+        );
+    }
+
     @SuppressWarnings("ConstantValue")
     public static void initializeIfNeeded() {
         if (!isInitialized) {
@@ -540,6 +552,24 @@ public class ClientWorldLoader {
     }
     
     public static void withSwitchedWorldFailSoft(ResourceKey<Level> dim, Runnable runnable) {
+        withSwitchedWorldFailSoft(dim, runnable, 0);
+    }
+
+    // a task for another dimension that arrives during a vanilla dimension change waits for it to complete
+    private static final int MAX_DEFERRED_TICKS = 200;
+
+    private static void withSwitchedWorldFailSoft(ResourceKey<Level> dim, Runnable runnable, int deferredTicks) {
+        if (!isReady()) {
+            if (deferredTicks >= MAX_DEFERRED_TICKS) {
+                LOGGER.error("Ignoring redirected task of {}: the client worlds are not ready", dim.identifier());
+                return;
+            }
+            IPGlobal.CLIENT_TASK_LIST.addTask(qouteall.q_misc_util.my_util.MyTaskList.oneShotTask(
+                () -> withSwitchedWorldFailSoft(dim, runnable, deferredTicks + 1)
+            ));
+            return;
+        }
+
         ClientLevel world = getOptionalWorld(dim);
         
         if (world == null) {

@@ -321,6 +321,14 @@ public class IPMcHelper {
         return deviceInfo.vendorName().toLowerCase().contains("nvidia");
     }
     
+    // the OpenGL graphics backend (not Vulkan)
+    @Environment(EnvType.CLIENT)
+    public static boolean isOpenGlBackend() {
+        GpuDevice device = RenderSystem.tryGetDevice();
+        DeviceInfo deviceInfo = device == null ? null : device.getDeviceInfo();
+        return deviceInfo != null && deviceInfo.backendName().equals("OpenGL");
+    }
+    
     public static FriendlyByteBuf bytesToBuf(byte[] packetBytes) {
         FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.wrappedBuffer(packetBytes));
         return buf;

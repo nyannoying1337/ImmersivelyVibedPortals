@@ -23,10 +23,13 @@ to **Minecraft 26.3 (Fabric)**. The original project stopped at Minecraft 1.21.1
 - Entities halfway through a portal are cut at the portal plane and show on the other side
 - Third-person view through portals; smooth camera turn after going through a rotated portal
 - Sodium (0.9.2+) and Iris (1.11.6+); shaderpacks checked: Complementary Reimagined, BSL
+- Also tested with Lithium, FerriteCore, Entity Culling, Xaero's Minimap, C2ME and ImmediatelyFast
+- Config presets (Performance, Balanced, Quality); portal views are rendered only where the portal is on screen
 - Both graphics backends (OpenGL and Vulkan); run the tests with `./gradlew runClientGameTest`
 
 ### Known issues
 - Shaderpacks are experimental: checked in the automated test, not in real gameplay yet. Iris needs the OpenGL backend
+- NVIDIA cards: turn "Improved Transparency" off (Video Settings), it can crash or leave terrain missing around portals
 - More in the [wiki's known issues](https://github.com/nyannoying1337/ImmersivelyVibedPortals/wiki/Known-Issues)
 
 ### What changed in the port

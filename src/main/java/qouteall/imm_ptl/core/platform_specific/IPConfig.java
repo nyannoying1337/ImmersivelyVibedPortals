@@ -20,7 +20,15 @@ public class IPConfig implements ConfigData {
     public String check_the_wiki_for_more_information = "https://qouteall.fun/immptl/wiki/Config-Options";
     
     // client visible configs
-    
+
+    // see ConfigPreset; applied in onConfigChanged. In the first tab of the config screen (no category).
+    @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.BUTTON)
+    @ConfigEntry.Gui.Tooltip(count = 3)
+    public ConfigPreset preset = ConfigPreset.balanced;
+    // the preset that was applied last (a different preset in the file or the config screen is applied)
+    @ConfigEntry.Gui.Excluded
+    public ConfigPreset appliedPreset = ConfigPreset.balanced;
+
     @ConfigEntry.Category("client")
     @ConfigEntry.BoundedDiscrete(min = 0, max = 10)
     @ConfigEntry.Gui.Tooltip
@@ -48,6 +56,9 @@ public class IPConfig implements ConfigData {
     @ConfigEntry.Gui.Tooltip
     public boolean enableClientPerformanceAdjustment = true;
     @ConfigEntry.Category("client")
+    @ConfigEntry.Gui.Tooltip
+    public boolean reduceFarPortalUpdates = true;
+@ConfigEntry.Category("client")
     public boolean clientTolerantVersionMismatchWithServer = false;
     @ConfigEntry.Category("client")
     @ConfigEntry.Gui.Tooltip
@@ -158,7 +169,20 @@ public class IPConfig implements ConfigData {
     }
     
     public void onConfigChanged() {
-        indirectLoadingRadiusCap = Mth.clamp(indirectLoadingRadiusCap, 1, 32);
+        if (preset == null) {
+            preset = ConfigPreset.balanced;
+        }
+        if (preset != appliedPreset) {
+            // a preset was chosen: it sets its settings (also when some of them were changed at the same time)
+            preset.applyTo(this);
+        }
+        else if (!preset.matches(this)) {
+            // one of the preset's settings was changed by hand
+            preset = ConfigPreset.custom;
+        }
+        appliedPreset = preset;
+
+indirectLoadingRadiusCap = Mth.clamp(indirectLoadingRadiusCap, 1, 32);
         regularPortalLengthLimit = Mth.clamp(regularPortalLengthLimit, 3, 64);
         scaleLimit = Mth.clamp(scaleLimit, 8, 128);
         if (netherPortalMode == null) {
@@ -198,7 +222,8 @@ public class IPConfig implements ConfigData {
         IPGlobal.lightVanillaNetherPortalWhenCrouching = lightVanillaNetherPortalWhenCrouching;
         IPGlobal.enableNetherPortalEffect = enableNetherPortalEffect;
         IPGlobal.enableClientPerformanceAdjustment = enableClientPerformanceAdjustment;
-        IPGlobal.enableServerPerformanceAdjustment = enableServerPerformanceAdjustment;
+        IPGlobal.reduceFarPortalUpdates = reduceFarPortalUpdates;
+IPGlobal.enableServerPerformanceAdjustment = enableServerPerformanceAdjustment;
         IPGlobal.enableCrossPortalSound = enableCrossPortalSound;
         IPGlobal.checkModInfoFromInternet = checkModInfoFromInternet;
         IPGlobal.enableUpdateNotification = enableUpdateNotification;

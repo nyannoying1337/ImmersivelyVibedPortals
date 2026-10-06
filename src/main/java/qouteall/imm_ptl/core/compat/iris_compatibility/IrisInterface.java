@@ -17,6 +17,11 @@ public class IrisInterface {
             return false;
         }
         
+        // a shaderpack is in use (not isShaders(): its users are 1.21.1 workarounds, see OnIrisPresent)
+        public boolean isShaderpackInUse() {
+            return false;
+        }
+
         public boolean isRenderingShadowMap() {
             return false;
         }

@@ -21,6 +21,10 @@ public class PortalRenderInfo {
      */
     public int lastVisibleFrame = Integer.MIN_VALUE / 2;
 
+    // the frame since which the portal is continuously in the main view's frustum (see PortalOcclusionCulling)
+    public int inFrustumSinceFrame = Integer.MIN_VALUE / 2;
+    public int lastInFrustumFrame = Integer.MIN_VALUE / 2;
+
     // see LoadedTerrainRadius
     public int loadedRadius;
     public int loadedRadiusFrame = Integer.MIN_VALUE / 2;

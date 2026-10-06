@@ -118,8 +118,53 @@ faces that can see each other, independent of the camera rotation, so a section 
 A portal of the main view whose box only touches sections without a node is skipped (no view, no surface).
 It is rendered when unsure: the graph is being rebuilt (the camera moved), right after a teleport, global or huge portals,
 portals nearer than 8 blocks, sections outside the grid. A portal found visible stays rendered for 10 more frames
-(`PortalRenderInfo.lastVisibleFrame`). Only for the main view (portal views don't update the graph) and not with Sodium
-(it replaces the graph). Switch: `IPCGlobal.cullHiddenPortals`. Feature test: "hidden portal culling".
+(`PortalRenderInfo.lastVisibleFrame`). Only for the main view (portal views don't update the graph).
+With Sodium (which replaces the graph): Sodium's culling result of the main view (`SodiumWorldRenderer.isBoxVisible`,
+frustum and occlusion; sections without blocks count as visible). It is from the last frame or older (async culling),
+so a portal is only skipped after it has been in the frustum for 10 frames in a row (else a portal turning into view
+would be skipped for a moment). Switch: `IPCGlobal.cullHiddenPortals`. Feature test: "hidden portal culling" (also
+with `-PwithSodium`).
+
+### Cropped views
+A view is rendered only for the screen rectangle its portal covers (`PortalViewCrop`), into a target of that size
+(`PortalViewTargetPool`: sizes in 64 px steps, grow at once, shrink after 60 frames), at the window's pixel density,
+so a small or far portal costs few pixels. "Screen space" is the window NDC of a view's camera (not cropped, not
+flipped); it is the same for a view and the views behind its portals. A view's `Mapping` maps screen space to its
+target's NDC (crop and mirror flip); it's applied to the extracted projection in `renderCurrentView`, and the portal
+surface samples with the texture matrix `PortalViewCrop.samplingMatrix(parent, child)` (`TextureMat` in
+`portal_view.vsh`, a `TextureTransform` per target). The rectangle: the portal's surface mesh projected with the
+view's projection, view bobbing/damage tilt (`IEGameRenderer.ip_applyViewBobbing`, as `GameRenderer.renderLevel`) and
+rotation, intersected with what the parent view shows (a portal outside it is skipped), 2 px margin, snapped to the
+window's pixel grid. Full-size when a part of the portal is behind the camera or it covers more than 60% of the screen.
+Off with a shaderpack (Iris' buffers are window-sized), in panorama mode, during the nausea/portal screen effect
+(its skew isn't computed), and for cross-portal and GUI views. The cull frustum is not cropped. Switch:
+`IPCGlobal.cropPortalViews`. Feature test: "hidden portal culling" (cropped view pixels, same image as full-size).
+
+### Fewer updates for far portals
+`FarPortalViewReuse`: a portal of the main view farther than 32 blocks covering less than 5% of the screen is rendered
+every 2nd frame (beyond 64 blocks and under 2%: every 3rd); in between its last image is drawn again. Its target is kept
+for it in the pool (`PortalViewTargetPool.acquire(..., keeper)` / `reuse`), with the mapping it was rendered with. Only
+while the camera (position, and the screen clip matrix: projection, bobbing, rotation), the crop rectangle and the
+portal (origin, axes, destination) are exactly as when it was rendered; otherwise the old image would be misaligned.
+So it only saves GPU time when standing still. Needs cropped views (the rectangle). Config `reduceFarPortalUpdates`
+(on in the Performance and Balanced presets). Feature test: "hidden portal culling" (far portal updates checks).
+
+### Invalidating a renderer mid-frame
+`LevelExtractor.extract` invalidates the compiled geometry when requested (allChanged), which recreates the
+renderer's buffers; with Sodium that waits for their last use. If a portal view already used that renderer in this
+frame (e.g. the main renderer, used by a view through a portal back into the player's dimension, right after a
+dimension change), its buffers belong to the frame being recorded and waiting crashed ("Cannot wait on a fence for the
+current submit"). So then the request is postponed to the start of the next frame (`MixinLevelExtractor`
+`modifyShouldInvalidate`, `DimensionRenderHelper.processPostponedInvalidation`). A renderer counts as used after its
+view is rendered, so a view's own first extraction still invalidates normally (postponing that left the new
+dimension without terrain after a teleport). Not when the renderer has no ViewArea (just reset).
+
+### Shaderpack uniforms in views
+Iris measures the light at the eyes (eyeBrightness, eyeBrightnessM: cave fog, exposure) at the camera entity in the
+level being rendered; in a portal view that's the player's position in the destination level (often underground), so
+views got cave fog. `PortalViewEyeLight` (mixins `MixinIrisCommonUniforms`, `MixinIrisHardcodedCustomUniforms`)
+measures it at the view camera. Biome uniforms still use the player. Portal view cameras use near plane 0.05 with a
+shaderpack (Iris' fixed `near` uniform), 0.005 otherwise.
 
 ### Per-view buffer instances
 - Fog: `GameRenderer.fogRenderer` is swapped to a pooled `FogRenderer` per view index; call `endFrame()` on all pooled instances each frame.
@@ -164,8 +209,8 @@ remove the front faces. A view whose combined camera transformation has a negati
 (`ViewNode.isMirrored`) is rendered with its projection flipped horizontally (on the extracted camera state in
 `PortalViewRenderer.renderCurrentView`, the only source of the level projection, so Sodium gets it too),
 which restores the winding. The image is then mirrored left-right, so a portal surface samples its view with x flipped
-when exactly one of the two views (the one drawing the surface and the portal's own) is mirrored
-(`portal_view_flipped` pipeline, `IMMPTL_FLIP_X`). Nested mirrors and portals seen in mirrors follow from that rule.
+when exactly one of the two views (the one drawing the surface and the portal's own) is mirrored (part of the view's
+`PortalViewCrop.Mapping`, see Cropped views). Nested mirrors and portals seen in mirrors follow from that rule.
 
 ## Global portals
 Global portals (world wrapping, dimension stacks) are not in the level's entity list. Their surfaces are
@@ -185,6 +230,9 @@ dimension renderer has its own. Things the port does for it (`compat/mixin/sodiu
 - Culling: Sodium culls asynchronously and keeps the results per renderer. Portal views skip that and collect their
   sections synchronously with Sodium's fallback traversal, and their camera doesn't count as a camera movement for
   the renderer (`MixinSodiumRenderSectionManager`, `MixinSodiumWorldRenderer`).
+- A cull task still running when a renderer stops being the main view's (dimension change) is finished by its
+  portal views (`MixinSodiumRenderSectionManager.onPrepareRenderTrees`): until its result is consumed, Sodium queues
+  section adds/removes (QueuedSectionStorage safe read phase), so the renderer never got new chunks.
 - Mirror views get the flipped projection because it is flipped on the extracted camera state, which Sodium reads.
 Run the visual test with Sodium: `./gradlew runClientGameTest -PwithSodium` (output in `build/visual-test/<backend>-sodium`).
 

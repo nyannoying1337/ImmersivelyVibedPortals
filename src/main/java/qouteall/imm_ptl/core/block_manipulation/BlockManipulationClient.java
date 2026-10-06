@@ -57,6 +57,13 @@ public class BlockManipulationClient {
         if (client.gameMode == null || client.level == null || client.player == null) {
             return;
         }
+        // during a vanilla dimension change (the respawn packet handling renders a frame while the player is
+        // still in the old level), the other dimensions' worlds aren't available
+        if (!ClientWorldLoader.isReady()) {
+            remotePointedDim = null;
+            remoteHitResult = null;
+            return;
+        }
         
         remotePointedDim = null;
         remoteHitResult = null;

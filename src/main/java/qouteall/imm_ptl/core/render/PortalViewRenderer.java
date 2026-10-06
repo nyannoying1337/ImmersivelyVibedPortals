@@ -95,6 +95,8 @@ public class PortalViewRenderer {
         // odd number of mirrors: the view is rendered with a horizontally flipped projection,
         // so that triangle winding (backface culling) stays correct. See docs/rendering-26.3.md.
         public final boolean isMirrored;
+        // the crop of the view and the flip of a mirrored view (see PortalViewCrop)
+        public PortalViewCrop.Mapping mapping;
 
         private ViewNode(
             boolean isMainView, @Nullable ViewNode parent, @Nullable Portal portal,
@@ -106,10 +108,19 @@ public class PortalViewRenderer {
             this.cameraPos = cameraPos;
             this.cameraTransformation = cameraTransformation;
             this.isMirrored = cameraTransformation != null && cameraTransformation.determinant3x3() < 0;
+            this.mapping = PortalViewCrop.Mapping.fullSize(isMirrored);
         }
     }
 
     private static @Nullable ViewNode rootNode = null;
+
+    // the renderers that portal views used in this frame (see MixinLevelExtractor.modifyShouldInvalidate)
+    private static final java.util.Set<LevelRenderer> renderersUsedThisFrame =
+        java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+
+    public static boolean isUsedByViewThisFrame(LevelRenderer levelRenderer) {
+        return renderersUsedThisFrame.contains(levelRenderer);
+    }
     private static @Nullable ViewNode currentNode = null;
 
     /**
@@ -131,20 +142,7 @@ public class PortalViewRenderer {
         return node.childTargets.get(portal);
     }
 
-    /**
-     * Whether a portal's view texture must be sampled with x flipped in the view being rendered now:
-     * when exactly one of the two views is mirrored.
-     */
-    public static boolean shouldFlipSampling(Portal portal) {
-        ViewNode node = currentNode != null ? currentNode : rootNode;
-        if (node == null) {
-            return false;
-        }
-        ViewNode child = node.children.get(portal);
-        return child != null && child.isMirrored != node.isMirrored;
-    }
-
-    public static boolean isCurrentViewMirrored() {
+public static boolean isCurrentViewMirrored() {
         return currentNode != null && currentNode.isMirrored;
     }
 
@@ -163,8 +161,13 @@ public class PortalViewRenderer {
         return crossPortalViewTarget;
     }
 
+    private static int reusedThisFrame = 0;
+    private static long reusedPixelsThisFrame = 0;
+
     public static void renderPortalViews(DeltaTracker deltaTracker) {
         targetPool.beginFrame();
+        reusedThisFrame = 0;
+        reusedPixelsThisFrame = 0;
         crossPortalViewTarget = null;
         fogRenderersUsed = 0;
         cloudRenderersUsed = 0;
@@ -180,10 +183,16 @@ public class PortalViewRenderer {
 
         ClientWorldLoader.initializeIfNeeded();
 
+        // geometry invalidations that were postponed in the last frame, before any renderer is used in this frame
+        for (DimensionRenderHelper helper : new ArrayList<>(ClientWorldLoader.RENDER_HELPER_MAP.values())) {
+            helper.processPostponedInvalidation();
+        }
+
         Camera mainCamera = client.gameRenderer.mainCamera();
         if (!mainCamera.isInitialized()) {
             return;
         }
+        PortalViewCrop.beginFrame(mainCamera, deltaTracker);
 
         ViewNode root = new ViewNode(
             true, null, null, TransformationManager.getIsometricAdjustedCameraPos(mainCamera), null
@@ -197,7 +206,9 @@ public class PortalViewRenderer {
             CrossPortalViewRendering.CrossPortalView crossPortalView =
                 CrossPortalViewRendering.getCrossPortalView(mainCamera);
             if (crossPortalView != null) {
-                TextureTarget target = targetPool.acquire(IPGlobal.portalRenderLimit + 1);
+                TextureTarget target = targetPool.acquire(
+                    IPGlobal.portalRenderLimit + 1, client.getWindow().getWidth(), client.getWindow().getHeight()
+                );
                 if (target != null) {
                     renderWorldIntoTarget(crossPortalView.worldRenderInfo(), target, deltaTracker);
                     crossPortalViewTarget = target;
@@ -216,7 +227,9 @@ public class PortalViewRenderer {
             currentNode = null;
             Stats.frames++;
             Stats.nanos += System.nanoTime() - startNanos;
-            Stats.views += targetPool.getUsedCount();
+            Stats.views += targetPool.getUsedCount() - reusedThisFrame;
+            Stats.viewPixels += targetPool.getUsedPixels() - reusedPixelsThisFrame;
+            Stats.reusedViews += reusedThisFrame;
         }
     }
 
@@ -229,12 +242,18 @@ public class PortalViewRenderer {
         public static long views;
         // portals in the frustum that were skipped because blocks hide them (PortalOcclusionCulling)
         public static long hiddenPortals;
+        // the pixels of the portal view targets (PortalViewCrop)
+        public static long viewPixels;
+        // views of far portals whose last image was shown again instead (FarPortalViewReuse)
+        public static long reusedViews;
 
         public static void reset() {
             frames = 0;
             nanos = 0;
             views = 0;
             hiddenPortals = 0;
+            viewPixels = 0;
+            reusedViews = 0;
         }
     }
 
@@ -254,13 +273,50 @@ public class PortalViewRenderer {
             Stats.hiddenPortals += count - portals.size();
         }
 
+        @Nullable Matrix4f screenClipMatrix = PortalViewCrop.getScreenClipMatrix();
+        Vec3 viewCameraPos = client.gameRenderer.mainCamera().position();
+        if (node.isMainView) {
+            java.util.Set<Portal> seen = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+            seen.addAll(portals);
+            FarPortalViewReuse.endFrame(seen);
+        }
         for (Portal portal : portals) {
             ClientLevel destLevel = ClientWorldLoader.getOptionalWorld(portal.getDestDim());
             if (destLevel == null) {
                 continue;
             }
 
-            TextureTarget target = targetPool.acquire(IPGlobal.portalRenderLimit);
+            PortalViewCrop.Crop crop = PortalViewCrop.computeCrop(portal, viewCameraPos, screenClipMatrix, node.mapping);
+            if (crop == null) {
+                // not in the (cropped) part of the screen that this view shows
+                continue;
+            }
+            // far portals of the main view: show the last image again if nothing moved (FarPortalViewReuse)
+            int updateInterval = node.isMainView && screenClipMatrix != null ?
+                FarPortalViewReuse.getUpdateInterval(portal, viewCameraPos, crop) : 1;
+            if (updateInterval > 1) {
+                PortalViewCrop.Mapping lastMapping = FarPortalViewReuse.getReusableMapping(
+                    portal, viewCameraPos, screenClipMatrix, crop, updateInterval
+                );
+                TextureTarget lastImage = lastMapping == null ? null :
+                    targetPool.reuse(portal, IPGlobal.portalRenderLimit);
+                if (lastImage != null) {
+                    PortalSurfaceRendering.setSamplingMatrix(
+                        targetPool.indexOf(lastImage), PortalViewCrop.samplingMatrix(node.mapping, lastMapping)
+                    );
+                    node.childTargets.put(portal, lastImage);
+                    reusedThisFrame++;
+                    reusedPixelsThisFrame += (long) lastImage.width * lastImage.height;
+                    continue;
+                }
+            }
+            else {
+                FarPortalViewReuse.forget(portal);
+            }
+
+            TextureTarget target = targetPool.acquire(
+                IPGlobal.portalRenderLimit, crop.width, crop.height, updateInterval > 1 ? portal : null
+            );
             if (target == null) {
                 break;
             }
@@ -273,6 +329,10 @@ public class PortalViewRenderer {
                 false, node, portal,
                 portal.transformPoint(node.cameraPos),
                 cameraTransformation
+            );
+            child.mapping = crop.finish(target.width, target.height, child.isMirrored);
+            PortalSurfaceRendering.setSamplingMatrix(
+                targetPool.indexOf(target), PortalViewCrop.samplingMatrix(node.mapping, child.mapping)
             );
             node.childTargets.put(portal, target);
             node.children.put(portal, child);
@@ -290,6 +350,11 @@ public class PortalViewRenderer {
                 .build();
 
             renderViewAndChildren(child, destLevel, target, worldRenderInfo, false, mainCamera, deltaTracker);
+            if (updateInterval > 1) {
+                FarPortalViewReuse.onRendered(
+                    portal, viewCameraPos, screenClipMatrix, crop, child.mapping, updateInterval
+                );
+            }
         }
     }
 
@@ -297,7 +362,7 @@ public class PortalViewRenderer {
      * Render a world view that's not seen through a portal (e.g. for a GUI) into the target.
      * Portals inside it are rendered too. Must be called while portal views are rendered
      * (see {@link GuiPortalRendering#_renderPendingTasks}).
-     * The target must be window-sized and have a depth buffer.
+     * The target must be window-sized and have a depth buffer (the view is not cropped).
      */
     public static void renderWorldIntoTarget(
         WorldRenderInfo worldRenderInfo, RenderTarget target, DeltaTracker deltaTracker
@@ -324,8 +389,8 @@ public class PortalViewRenderer {
             ((qouteall.imm_ptl.core.mixin.client.render.IEFeatureRenderDispatcher)
                 client.gameRenderer.featureRenderDispatcher()).ip_getPreparedFrame().close();
         }
-        catch (IllegalStateException ignored) {
-            // it was not in use
+        catch (IllegalStateException | NullPointerException ignored) {
+            // it was not in use ("Frame not in use")
         }
         RenderSystem.isRenderingLevel = false;
     }
@@ -441,6 +506,8 @@ public class PortalViewRenderer {
             Profiler.get().push("render_portal_view");
             renderCurrentView(target, renderHelper, deltaTracker);
             Profiler.get().pop();
+            // its buffers are now used by this frame (an invalidation of it must wait for the next frame)
+            renderersUsedThisFrame.add(renderHelper.levelRenderer);
             if (portal != null) {
                 PortalRendering.onEndPortalWorldRendering();
             }
@@ -494,13 +561,15 @@ public class PortalViewRenderer {
 
         // extract
         ieGameRenderer.ip_extractCamera(deltaTracker, worldPartialTicks);
-        // A mirror view's rotation contains a reflection, which reverses triangle winding, so backface culling
-        // would cull the wrong faces. Flip the projection horizontally to reverse it back; the portal surface
-        // samples such a view with x flipped (see shouldFlipSampling). Done on the extracted state, which is
-        // the only source of the level projection (GameRenderer.renderLevel), so other renderers
-        // that capture it (e.g. Sodium) get the flipped matrix too.
-        if (isCurrentViewMirrored()) {
-            gameRenderState.levelRenderState.cameraRenderState.projectionMatrix.scaleLocal(-1, 1, 1);
+        // The view's crop (PortalViewCrop), and for a mirror view a horizontal flip: its rotation contains a
+        // reflection, which reverses triangle winding, so backface culling would cull the wrong faces; the flip
+        // reverses it back. The portal surface samples the view accordingly (PortalViewCrop.samplingMatrix).
+        // Done on the extracted state, which is the only source of the level projection
+        // (GameRenderer.renderLevel), so other renderers that capture it (e.g. Sodium) get it too.
+        if (currentNode != null && !currentNode.mapping.isIdentity()) {
+            gameRenderState.levelRenderState.cameraRenderState.projectionMatrix.mulLocal(
+                currentNode.mapping.toClipMatrix()
+            );
         }
         client.levelExtractor.extract(deltaTracker, gameRenderer.mainCamera(), worldPartialTicks);
 
@@ -566,6 +635,7 @@ public class PortalViewRenderer {
      * Called at the end of each frame.
      */
     public static void onEndFrame() {
+        renderersUsedThisFrame.clear();
         ViewDiagnostics.onEndFrame();
         for (FogRenderer fogRenderer : fogRendererPool) {
             fogRenderer.endFrame();
@@ -584,6 +654,7 @@ public class PortalViewRenderer {
     public static void init() {
         IPCGlobal.CLIENT_CLEANUP_EVENT.register(() -> {
             targetPool.cleanUp();
+            FarPortalViewReuse.cleanUp();
             for (FogRenderer fogRenderer : fogRendererPool) {
                 fogRenderer.close();
             }

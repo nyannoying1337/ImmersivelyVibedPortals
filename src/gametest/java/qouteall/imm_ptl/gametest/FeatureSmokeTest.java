@@ -111,9 +111,16 @@ public class FeatureSmokeTest implements FabricClientGameTest {
                     mc.gui.hud.toggle();
                 }
             });
+            // -Pimm_ptl.featureTest.maxPortalLayer=<n>: limit the portal nesting (for narrowing down rendering issues)
+            String maxLayer = System.getProperty("imm_ptl.featureTest.maxPortalLayer", "");
+            if (!maxLayer.isEmpty()) {
+                ctx.runOnClient(mc -> IPGlobal.maxPortalLayer = Integer.parseInt(maxLayer));
+            }
             List<String> log = new ArrayList<>();
             log.add("render distance " + ctx.computeOnClient(mc -> mc.options.getEffectiveRenderDistance())
-                + ", position " + pos);
+                + ", position " + pos + ", shaderpack in use "
+                + ctx.computeOnClient(mc -> qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface.invoker.isShaderpackInUse())
+                + ", max portal layer " + ctx.computeOnClient(mc -> IPGlobal.maxPortalLayer));
             String last = sampleTerrain(ctx, "user world", 6, 100, log);
             screenshot(ctx, "user_world");
             ctx.runOnClient(mc -> qouteall.imm_ptl.core.render.ViewDiagnostics.enabled = false);
@@ -176,6 +183,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         }
 
         section("first start screen", () -> initialScreen(ctx));
+        section("config presets", () -> configPresets(ctx));
 
         try (TestSingleplayerContext sp = ctx.worldBuilder()
             .adjustSettings(s -> s.setGameMode(WorldCreationUiState.SelectedGameMode.CREATIVE))
@@ -669,6 +677,60 @@ public class FeatureSmokeTest implements FabricClientGameTest {
     }
 
     /**
+     * Config presets (ConfigPreset): choosing one sets its settings when the config is saved (also the running values
+     * in IPGlobal), changing one of them by hand makes the preset "custom". And the config screen opens and saves.
+     */
+    private void configPresets(ClientGameTestContext ctx) {
+        String quality = ctx.computeOnClient(mc -> {
+            IPConfig c = IPConfig.getConfig();
+            c.preset = qouteall.imm_ptl.core.platform_specific.ConfigPreset.quality;
+            c.saveConfigFile();
+            return c.preset + " far updates " + c.reduceFarPortalUpdates + " running " + IPGlobal.reduceFarPortalUpdates;
+        });
+        check("config presets: quality updates far portals every frame",
+            quality.equals("quality far updates false running false"), quality);
+
+        String performance = ctx.computeOnClient(mc -> {
+            IPConfig c = IPConfig.getConfig();
+            c.preset = qouteall.imm_ptl.core.platform_specific.ConfigPreset.performance;
+            c.saveConfigFile();
+            return c.preset + " layer " + c.maxPortalLayer + " reduced " + c.reducedPortalRendering + " cap " + c.indirectLoadingRadiusCap
+                + " yourself " + c.renderYourselfInPortal + " far updates " + c.reduceFarPortalUpdates + " running layer " + IPGlobal.maxPortalLayer;
+        });
+        check("config presets: choosing performance sets its settings",
+            performance.equals("performance layer 2 reduced true cap 4 yourself false far updates true running layer 2"), performance);
+
+        String custom = ctx.computeOnClient(mc -> {
+            IPConfig c = IPConfig.getConfig();
+            c.maxPortalLayer = 3;
+            c.saveConfigFile();
+            return c.preset + " layer " + c.maxPortalLayer;
+        });
+        check("config presets: changing one of its settings by hand makes it custom", custom.equals("custom layer 3"), custom);
+
+        String balanced = ctx.computeOnClient(mc -> {
+            IPConfig c = IPConfig.getConfig();
+            c.preset = qouteall.imm_ptl.core.platform_specific.ConfigPreset.balanced;
+            c.saveConfigFile();
+            return c.preset + " layer " + c.maxPortalLayer + " reduced " + c.reducedPortalRendering + " cap " + c.indirectLoadingRadiusCap
+                + " yourself " + c.renderYourselfInPortal + " adjustment " + c.enableClientPerformanceAdjustment;
+        });
+        check("config presets: choosing balanced restores the defaults",
+            balanced.equals("balanced layer 5 reduced false cap 8 yourself true adjustment true"), balanced);
+
+        // the config screen (with the preset at the top of the client settings) opens and saves
+        ctx.runOnClient(mc -> mc.gui.setScreen(
+            qouteall.imm_ptl.core.platform_specific.IPConfigGUI.createClothConfigScreen(new TitleScreen())
+        ));
+        ctx.waitTicks(5);
+        screenshot(ctx, "config_screen");
+        ctx.clickScreenButton("text.cloth-config.save_and_done");
+        ctx.waitForScreen(TitleScreen.class);
+        String afterScreen = ctx.computeOnClient(mc -> IPConfig.getConfig().preset.name());
+        check("config presets: saving the config screen keeps the preset", afterScreen.equals("balanced"), afterScreen);
+    }
+
+    /**
      * The screen shown at the first start (and again when its content changes): all pages, then "I know" on the last
      * one stores the content version, so that it isn't shown again.
      */
@@ -719,6 +781,8 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         for (int y = -48; y < 0; y += 12) {
             srv.runCommand(String.format(Locale.ROOT, "fill 464 %d 464 511 %d 511 minecraft:stone", y, y + 11));
         }
+        // a floor in the portal's section: Sodium counts sections without blocks as visible
+        srv.runCommand("fill 512 -31 480 527 -31 495 minecraft:stone");
         // the camera's pocket (section 30 -2 30) and the portal's pocket (section 32 -2 30)
         srv.runCommand("fill 486 -26 486 489 -23 489 minecraft:air");
         srv.runCommand("fill 516 -30 482 525 -19 493 minecraft:air");
@@ -741,7 +805,7 @@ public class FeatureSmokeTest implements FabricClientGameTest {
 
         // The portal (to a far place: an extra view renderer of the overworld) exists while the stone's sections change from empty to
         // filled: the main renderer must still get those changes (they are taken once from the ClientLevel).
-        // Sodium replaces the vanilla section graph and lists: no culling, and nothing to check here
+        // Sodium replaces the vanilla section lists: nothing to check here
         boolean sodium = ctx.computeOnClient(mc ->
             qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface.invoker.isSodiumPresent());
         boolean stoneRendered = sodium || ctx.computeOnClient(mc -> {
@@ -750,7 +814,10 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         });
         check("hidden portal: the filled sections around the camera are rendered (extra view renderer present)", stoneRendered,
             hiddenPortalDiagnostics(ctx));
-        // the graph was built before the stone's meshes were compiled; vanilla rebuilds it when the camera moves
+        // the graph was built before the stone's meshes were compiled; vanilla rebuilds it when the camera moves.
+        // Rebuild it once all sections are built.
+        waitFor(ctx, 600, () -> ctx.computeOnClient(mc -> mc.levelRenderer.hasRenderedAllSections()));
+        ctx.waitTicks(20);
         ctx.runOnClient(mc -> mc.levelRenderer.sectionOcclusionGraph().invalidate());
         ctx.waitTicks(20);
 
@@ -761,8 +828,8 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         long[] sealed = countViews(ctx, 20);
         check("hidden portal: rendered when culling is off (the scene works)", off[0] > 0,
             String.format(Locale.ROOT, "views %d", off[0]));
-        check(sodium ? "hidden portal: still rendered with Sodium (no culling)" : "hidden portal: not rendered behind blocks",
-            sodium ? sealed[0] > 0 && sealed[1] == 0 : sealed[0] == 0 && sealed[1] > 0,
+        check("hidden portal: not rendered behind blocks" + (sodium ? " (Sodium)" : ""),
+            sealed[0] == 0 && sealed[1] > 0,
             String.format(Locale.ROOT, "views %d, hidden %d; %s", sealed[0], sealed[1], hiddenPortalDiagnostics(ctx)));
         screenshot(ctx, "hidden_portal_sealed");
 
@@ -772,6 +839,45 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         check("hidden portal: rendered again when the tunnel is dug", open[0] > 0,
             String.format(Locale.ROOT, "views %d, hidden %d; %s", open[0], open[1], hiddenPortalDiagnostics(ctx)));
         screenshot(ctx, "hidden_portal_open");
+
+        // Cropped views (PortalViewCrop): the portal, 3x4 blocks and 33 blocks away, covers a small part of the
+        // screen. Its view is rendered only for that rectangle, and the image is the same as with a full-size view.
+        double croppedShare = viewPixelShare(ctx, 20);
+        int[] cropped = captureFrame(ctx);
+        ctx.runOnClient(mc -> qouteall.imm_ptl.core.IPCGlobal.cropPortalViews = false);
+        ctx.waitTicks(10);
+        double fullShare = viewPixelShare(ctx, 20);
+        int[] full = captureFrame(ctx);
+        ctx.runOnClient(mc -> qouteall.imm_ptl.core.IPCGlobal.cropPortalViews = true);
+        boolean shaderpack = ctx.computeOnClient(mc ->
+            qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface.invoker.isShaderpackInUse());
+        check("cropped portal view: a small portal's view is rendered for a small part of the window" + (shaderpack ? " (not with a shaderpack)" : ""),
+            shaderpack ? croppedShare > 0.99 : (croppedShare > 0 && croppedShare < 0.2 && fullShare > 0.99),
+            String.format(Locale.ROOT, "view pixels / window pixels: cropped %.3f, full-size %.3f", croppedShare, fullShare));
+        int differing = countDifferingPixels(cropped, full);
+        check("cropped portal view: the image is the same as with a full-size view",
+            cropped.length == full.length && differing < cropped.length / 500,
+            String.format(Locale.ROOT, "%d of %d pixels differ", differing, cropped.length));
+
+        // Fewer updates for far portals (FarPortalViewReuse): the camera stands still, the portal is far and small,
+        // so its view is rendered only every 2nd frame and its last image is shown in between. Not when it's off.
+        if (!shaderpack) {
+            long[] reduced = countRenderedAndReused(ctx, 20);
+            ctx.runOnClient(mc -> qouteall.imm_ptl.core.IPGlobal.reduceFarPortalUpdates = false);
+            long[] everyFrame = countRenderedAndReused(ctx, 20);
+            ctx.runOnClient(mc -> qouteall.imm_ptl.core.IPGlobal.reduceFarPortalUpdates = true);
+            check("far portal updates: a far, small portal's view is rendered every 2nd frame while the camera stands still",
+                reduced[1] > 0 && Math.abs(reduced[0] - reduced[1]) <= Math.max(2, reduced[0] / 5),
+                String.format(Locale.ROOT, "rendered %d, reused %d", reduced[0], reduced[1]));
+            check("far portal updates: rendered every frame when turned off",
+                everyFrame[0] > 0 && everyFrame[1] == 0,
+                String.format(Locale.ROOT, "rendered %d, reused %d", everyFrame[0], everyFrame[1]));
+            // the camera turns a little each frame: the old image would be misaligned, so it's rendered each frame
+            long[] turning = countRenderedAndReusedWhileTurning(ctx, 20);
+            check("far portal updates: rendered every frame while the camera turns",
+                turning[0] > 0 && turning[1] == 0,
+                String.format(Locale.ROOT, "rendered %d, reused %d", turning[0], turning[1]));
+        }
 
         srv.runOnServer(s -> {
             for (Portal p : s.overworld().getEntitiesOfClass(Portal.class, new AABB(510, -40, 470, 530, -10, 500))) {
@@ -866,7 +972,17 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         // back to the overworld for the next sections (they run commands as the player)
         srv.runOnServer(s -> s.getLevel(Level.NETHER).getEntitiesOfClass(Portal.class, new AABB(x0 - 6, y - 2, z - 3, x0 - 1, y + 7, z + 2))
             .forEach(p -> p.discard()));
+        // while pointing at a block through the portal: a vanilla dimension change renders a frame while the
+        // player is still in the old level, and pointing through the portal there disconnected the client
+        srv.runCommand(inNether + String.format(Locale.ROOT, "tp Player0 %.1f %d %.1f 180 10", x0 + 2.0, y, z + 2.5));
+        ctx.waitTicks(20);
+        boolean pointingThrough = ctx.computeOnClient(mc -> qouteall.imm_ptl.core.block_manipulation.BlockManipulationClient.remotePointedDim != null);
         srv.runCommand("execute in minecraft:overworld run tp Player0 0.5 -58 0.5");
+        ctx.waitTicks(40);
+        String afterChange = ctx.computeOnClient(mc -> mc.getConnection() == null ? "disconnected"
+            : String.valueOf(mc.level.dimension().identifier()));
+        check("far portal terrain: a dimension change while pointing through a portal keeps the client connected",
+            afterChange.equals("minecraft:overworld"), "pointing through the portal before: " + pointingThrough + ", after: " + afterChange);
         ctx.runOnClient(mc -> {
             mc.options.renderDistance().set(oldRenderDistance);
             mc.options.broadcastOptions();
@@ -915,10 +1031,120 @@ public class FeatureSmokeTest implements FabricClientGameTest {
             List<Portal> portals = mc.level.getEntitiesOfClass(Portal.class, new AABB(510, -40, 470, 530, -10, 500));
             String why = portals.isEmpty() ? "no portal" :
                 String.valueOf(qouteall.imm_ptl.core.render.PortalOcclusionCulling.whyVisible(portals.get(0), camera));
-            return String.format(Locale.ROOT, "camera %s, block %s, smartCull %b, visible sections %d, why visible: %s",
+            // the graph's state of the sections from the camera to the portal (x 29..32, y -2, z 30)
+            StringBuilder graphState = new StringBuilder();
+            var viewArea = mc.levelRenderer.viewArea();
+            var graph = mc.levelRenderer.sectionOcclusionGraph();
+            for (int sx = 29; sx <= 32 && viewArea != null; sx++) {
+                var section = viewArea.getRenderSectionAt(new net.minecraft.core.BlockPos(sx * 16, -32, 30 * 16));
+                graphState.append(" x").append(sx).append(section == null ? ":none" :
+                    (graph.getNode(section) != null ? ":node" : ":-") + "/" + (section.getSectionMesh() == net.minecraft.client.renderer.chunk.CompiledSectionMesh.EMPTY ? "empty"
+                        : section.getSectionMesh() == net.minecraft.client.renderer.chunk.CompiledSectionMesh.UNCOMPILED ? "uncompiled" : "mesh")
+                        + (mc.level.getChunk(sx, 30).getSection(mc.level.getSectionIndexFromSectionY(-2)).hasOnlyAir() ? "/air" : "/blocks"));
+            }
+            return String.format(Locale.ROOT, "camera %s, block %s, smartCull %b, visible sections %d, why visible: %s, graph%s",
                 camera, mc.level.getBlockState(net.minecraft.core.BlockPos.containing(camera.add(1, 0, 0))),
-                mc.smartCull, mc.levelRenderer.visibleSections().size(), why);
+                mc.smartCull, mc.levelRenderer.visibleSections().size(), why, graphState);
         });
+    }
+
+    /**
+     * The pixels of the portal view targets per view rendered during the given ticks, relative to the window's.
+     */
+    private static double viewPixelShare(ClientGameTestContext ctx, int ticks) {
+        long[] before = ctx.computeOnClient(mc -> new long[]{
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.views,
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.viewPixels
+        });
+        ctx.waitTicks(ticks);
+        long[] after = ctx.computeOnClient(mc -> new long[]{
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.views,
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.viewPixels
+        });
+        long windowPixels = ctx.computeOnClient(mc -> (long) mc.getWindow().getWidth() * mc.getWindow().getHeight());
+        long views = after[0] - before[0];
+        return views == 0 ? 0 : (double) (after[1] - before[1]) / views / windowPixels;
+    }
+
+    // portal views rendered and portal views whose last image was shown again (FarPortalViewReuse) during the ticks
+    private static long[] countRenderedAndReused(ClientGameTestContext ctx, int ticks) {
+        long[] before = ctx.computeOnClient(mc -> new long[]{
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.views,
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.reusedViews
+        });
+        ctx.waitTicks(ticks);
+        long[] after = ctx.computeOnClient(mc -> new long[]{
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.views,
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.reusedViews
+        });
+        return new long[]{after[0] - before[0], after[1] - before[1]};
+    }
+
+    // while set, the camera turns a little before every frame (a test tick renders its frames at the same partial tick)
+    private static volatile boolean turnEachFrame = false;
+    private static boolean turnHookRegistered = false;
+
+    private static long[] countRenderedAndReusedWhileTurning(ClientGameTestContext ctx, int ticks) {
+        if (!turnHookRegistered) {
+            turnHookRegistered = true;
+            int[] frame = {0};
+            ctx.runOnClient(mc -> IPGlobal.PRE_GAME_RENDER_EVENT.register(() -> {
+                if (turnEachFrame && mc.player != null) {
+                    float y = mc.player.getYRot() + (frame[0]++ % 2 == 0 ? 0.2F : -0.2F);
+                    mc.player.setYRot(y);
+                    mc.player.yRotO = y;
+                }
+            }));
+        }
+        long[] before = ctx.computeOnClient(mc -> new long[]{
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.views,
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.reusedViews
+        });
+        float yaw = ctx.computeOnClient(mc -> mc.player.getYRot());
+        turnEachFrame = true;
+        ctx.waitTicks(ticks);
+        turnEachFrame = false;
+        ctx.runOnClient(mc -> {
+            mc.player.setYRot(yaw);
+            mc.player.yRotO = yaw;
+        });
+        long[] after = ctx.computeOnClient(mc -> new long[]{
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.views,
+            qouteall.imm_ptl.core.render.PortalViewRenderer.Stats.reusedViews
+        });
+        return new long[]{after[0] - before[0], after[1] - before[1]};
+    }
+
+    // the main render target as it is after the last frame, as ARGB pixels
+    private static int[] captureFrame(ClientGameTestContext ctx) {
+        java.util.concurrent.CompletableFuture<int[]> done = new java.util.concurrent.CompletableFuture<>();
+        ctx.runOnClient(mc -> net.minecraft.client.Screenshot.takeScreenshot(mc.gameRenderer.mainRenderTarget(), image -> {
+            try (image) {
+                int[] pixels = new int[image.getWidth() * image.getHeight()];
+                for (int y = 0; y < image.getHeight(); y++) {
+                    for (int x = 0; x < image.getWidth(); x++) {
+                        pixels[x + y * image.getWidth()] = image.getPixel(x, y);
+                    }
+                }
+                done.complete(pixels);
+            }
+        }));
+        ctx.waitFor(mc -> done.isDone(), 100);
+        return done.join();
+    }
+
+    // pixels with a color channel differing by more than 8
+    private static int countDifferingPixels(int[] a, int[] b) {
+        int count = 0;
+        for (int i = 0; i < Math.min(a.length, b.length); i++) {
+            for (int shift = 0; shift < 24; shift += 8) {
+                if (Math.abs(((a[i] >> shift) & 0xFF) - ((b[i] >> shift) & 0xFF)) > 8) {
+                    count++;
+                    break;
+                }
+            }
+        }
+        return count;
     }
 
     /**

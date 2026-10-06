@@ -26,7 +26,7 @@ import java.util.Locale;
 /**
  * Portal rendering benchmark: a fixed camera looking at a row of N portals (N = 0, 1, 4, 8),
  * each leading to a different spot of the nether (so that every portal renders its own view).
- * Records wall-clock time per frame and CPU time spent rendering portal views.
+ * Records wall-clock time per frame, CPU time spent rendering portal views, views and view pixels per frame.
  * <p>
  * In a client gametest the frames are paced by the test's tick stepping, so the absolute numbers are
  * not FPS; compare scenarios and builds with each other.
@@ -93,6 +93,11 @@ public class PerfBenchmark implements FabricClientGameTest {
                 ctx.waitTicks(200);
                 measure(ctx, out, label, String.valueOf(n));
             }
+            // full-size portal views (PortalViewCrop off)
+            ctx.runOnClient(mc -> qouteall.imm_ptl.core.IPCGlobal.cropPortalViews = false);
+            ctx.waitTicks(20);
+            measure(ctx, out, label, "8-no-crop");
+            ctx.runOnClient(mc -> qouteall.imm_ptl.core.IPCGlobal.cropPortalViews = true);
 
             // 8 portals hidden behind blocks: the camera is in an air pocket in a solid 3x3x3 block of sections
             // (sections -1..1, -4..-3, -1..1), the portals are two sections away (PortalOcclusionCulling)
@@ -121,13 +126,16 @@ public class PerfBenchmark implements FabricClientGameTest {
         }
         long wall = System.nanoTime() - start;
         String row = ctx.computeOnClient(mc -> String.format(Locale.ROOT,
-            "%s,%s,%.3f,%.3f,%.2f%n",
+            "%s,%s,%.3f,%.3f,%.2f,%.2f%n",
             label, scenario,
             wall / 1e6 / FRAMES,
             PortalViewRenderer.Stats.frames == 0 ? 0 :
                 PortalViewRenderer.Stats.nanos / 1e6 / PortalViewRenderer.Stats.frames,
             PortalViewRenderer.Stats.frames == 0 ? 0 :
-                (double) PortalViewRenderer.Stats.views / PortalViewRenderer.Stats.frames
+                (double) PortalViewRenderer.Stats.views / PortalViewRenderer.Stats.frames,
+            // million pixels of portal view targets per frame
+            PortalViewRenderer.Stats.frames == 0 ? 0 :
+                PortalViewRenderer.Stats.viewPixels / 1e6 / PortalViewRenderer.Stats.frames
         ));
         try {
             Files.writeString(out.resolve("results.csv"), row,

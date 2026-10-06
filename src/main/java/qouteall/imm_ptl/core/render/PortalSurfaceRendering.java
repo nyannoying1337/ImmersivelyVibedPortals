@@ -18,6 +18,7 @@ import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.TextureTransform;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
@@ -36,13 +37,9 @@ import java.util.List;
  * and has its own render type, so the surface can be submitted like normal entity geometry.
  */
 public class PortalSurfaceRendering {
-    public static final RenderPipeline PORTAL_VIEW_PIPELINE = createPipeline("pipeline/portal_view", false);
-    // samples the view with x flipped: a mirrored view seen from a non-mirrored view or vice versa
-    // (mirrored views are rendered with a horizontally flipped projection, see MixinGameRenderer)
-    public static final RenderPipeline PORTAL_VIEW_FLIPPED_PIPELINE =
-        createPipeline("pipeline/portal_view_flipped", true);
+    public static final RenderPipeline PORTAL_VIEW_PIPELINE = createPipeline("pipeline/portal_view");
 
-    private static RenderPipeline createPipeline(String path, boolean flipX) {
+    private static RenderPipeline createPipeline(String path) {
         RenderPipeline.Builder builder = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
         .withLocation(Identifier.fromNamespaceAndPath("immersive_portals", path))
         .withBindGroupLayout(BindGroupLayouts.PROJECTION)
@@ -58,14 +55,13 @@ public class PortalSurfaceRendering {
         .withDepthStencilState(DepthStencilState.DEFAULT)
         // the portal can be seen from both sides (e.g. mirrors are culled by other means)
         .withCull(false);
-        if (flipX) {
-            builder.withShaderDefine("IMMPTL_FLIP_X");
-        }
         return builder.build();
     }
 
     private static final List<RenderType> renderTypes = new ArrayList<>();
-    private static final List<RenderType> flippedRenderTypes = new ArrayList<>();
+    // per target: the texture matrix that maps the drawing view's screen uv to the target's uv
+    // (the views' crops and mirror flips, PortalViewCrop.samplingMatrix); set when the target is handed out
+    private static final List<Matrix4f> samplingMatrices = new ArrayList<>();
 
     /**
      * A texture whose image is a portal view target's color attachment.
@@ -104,20 +100,25 @@ public class PortalSurfaceRendering {
 
         while (renderTypes.size() <= index) {
             renderTypes.add(null);
-            flippedRenderTypes.add(null);
+            samplingMatrices.add(new Matrix4f());
         }
+        Matrix4f samplingMatrix = samplingMatrices.get(index);
         renderTypes.set(index, RenderType.create(
             "immersive_portals:portal_view_" + index,
             RenderSetup.builder(PORTAL_VIEW_PIPELINE)
                 .withTexture("Sampler0", id)
+                .setTextureTransform(new TextureTransform(
+                    "immersive_portals:portal_view_" + index, () -> new Matrix4f(samplingMatrix)
+                ))
                 .createRenderSetup()
         ));
-        flippedRenderTypes.set(index, RenderType.create(
-            "immersive_portals:portal_view_flipped_" + index,
-            RenderSetup.builder(PORTAL_VIEW_FLIPPED_PIPELINE)
-                .withTexture("Sampler0", id)
-                .createRenderSetup()
-        ));
+    }
+
+    /**
+     * Set how the target with that index is sampled in this frame (it's drawn in one view per frame).
+     */
+    static void setSamplingMatrix(int index, Matrix4f matrix) {
+        samplingMatrices.get(index).set(matrix);
     }
 
     static void onPoolCleared() {
@@ -127,7 +128,7 @@ public class PortalSurfaceRendering {
             );
         }
         renderTypes.clear();
-        flippedRenderTypes.clear();
+        samplingMatrices.clear();
     }
 
     /**
@@ -157,8 +158,7 @@ public class PortalSurfaceRendering {
         if (index < 0 || index >= renderTypes.size()) {
             return null;
         }
-        return PortalViewRenderer.shouldFlipSampling(portal) ?
-            flippedRenderTypes.get(index) : renderTypes.get(index);
+        return renderTypes.get(index);
     }
 
     /**

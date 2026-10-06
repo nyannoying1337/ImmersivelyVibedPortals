@@ -64,7 +64,7 @@ import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
  * Cross-portal entity rendering: an entity touching a portal is clipped by the portal plane on the CPU
  *  (EntityClipping) and its projection is rendered on the other side (CrossPortalEntityRenderer).
  * Mirror face culling: views through an odd number of mirrors are rendered with an x-flipped projection (restores the
- *  triangle winding) and sampled with x flipped (PortalViewRenderer.renderCurrentView, shouldFlipSampling).
+ *  triangle winding) and sampled with x flipped (PortalViewRenderer.renderCurrentView, PortalViewCrop).
  * Depth clamp: renderpearl has none; the portal surface shader emulates it (portal_view.vsh/fsh).
  */
 @Mixin(value = LevelRenderer.class)

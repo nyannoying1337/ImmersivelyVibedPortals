@@ -1,9 +1,19 @@
-**6.1.0-beta.9 — BETA: major issues may occur. Back up your worlds.**
+**6.1.0-beta.10 — BETA: major issues may occur. Back up your worlds.**
+
+New
+- Portals hidden behind blocks are now also skipped with Sodium (more FPS in bases with many portals).
+- Portal views are rendered only for the part of the screen the portal covers: small and distant portals cost much less GPU time (not with shaderpacks).
+- Fewer updates for far portals: small portals far away are rendered every 2nd or 3rd frame while you stand still (on in the Performance and Balanced presets).
+- Tested together with Sodium, Lithium, FerriteCore, Entity Culling, Xaero's Minimap, C2ME and ImmediatelyFast. With Entity Culling, entities seen through portals are no longer hidden by it.
+- Config presets: Performance, Balanced (the defaults), Quality and Custom, at the top of the config screen. A preset sets the settings that cost the most performance (portals inside portals, portal view distance, terrain loaded behind distant portals, showing yourself in portals, loading less at low FPS); changing one of them by hand makes it Custom.
 
 Fixes
-- Terrain behind the portal you stand at was loaded only 8 chunks far (the "indirect loading radius cap"), so beyond that the view showed sky with a hard edge. The portal in front of you (within 5 blocks) is now loaded as far as your render distance.
-- Portal views are now only rendered as far as the terrain behind them is loaded, and end in fog there, like the normal view at the render distance (no more hard edges of sky or floating chunks in views of portals further away).
+- Fixed a disconnect ("Network Protocol Error") when changing dimension (e.g. with /tp or /execute in another dimension) while looking at a portal.
+- Fixed a crash with Sodium or Iris right after changing dimension ("Cannot wait on a fence for the current submit").
+- The "You are using Nvidia videocard" chat warning only shows with the OpenGL backend (the driver issue it links to is OpenGL-only).
+- Fixed a crash "Frame not in use" after an error while rendering a portal view (the error is now only logged).
+- Sodium: portal views of the dimension you just left could stay without terrain (depending on timing).
+- Shaderpacks: portal views no longer get thick cave fog (the light at the eyes was measured at the player's position in the other dimension).
 
-Changes
-- In-game texts (chat messages, config screen, creative tab, command stick) now use the name Immersively Vibed Portals.
-- The first-start screen is rewritten for this port (BETA notice, where to report problems, Sodium and Iris notes) and fixed (its text was off-center and cut off at the right edge). It is shown once more after updating.
+Known issue
+- NVIDIA graphics cards with "Improved Transparency" (Video Settings) turned on: crashes ("Failed to find or load pipeline ... oit_depth_bounds ...") and terrain missing around portals. Turn Improved Transparency off for now.

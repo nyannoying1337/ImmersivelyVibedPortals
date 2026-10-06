@@ -34,7 +34,8 @@ public class IPModMainClient {
         IPGlobal.CLIENT_TASK_LIST.addTask(MyTaskList.withDelayCondition(
             () -> Minecraft.getInstance().level == null,
             MyTaskList.oneShotTask(() -> {
-                if (IPMcHelper.isNvidiaVideocard()) {
+                // the linked issue is NVIDIA's OpenGL driver (threaded optimization); not with Vulkan
+                if (IPMcHelper.isNvidiaVideocard() && IPMcHelper.isOpenGlBackend()) {
                     if (!SodiumInterface.invoker.isSodiumPresent()) {
                         CHelper.printChat(
                             Component.translatable("imm_ptl.nvidia_warning")

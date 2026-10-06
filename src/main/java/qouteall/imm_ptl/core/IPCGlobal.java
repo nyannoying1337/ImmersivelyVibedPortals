@@ -17,7 +17,9 @@ public class IPCGlobal {
     public static boolean earlyFrustumCullingPortal = true;
     // skip the views of portals hidden behind blocks (PortalOcclusionCulling)
     public static boolean cullHiddenPortals = true;
-    
+    // render portal views only for the screen rectangle their portal covers (PortalViewCrop)
+    public static boolean cropPortalViews = true;
+
     /**
      * Fired when client exits world or doing conventional dimension travel (with loading screen).
      */

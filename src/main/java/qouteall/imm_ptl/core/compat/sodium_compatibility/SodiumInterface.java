@@ -43,6 +43,14 @@ public class SodiumInterface {
             return null;
         }
 
+        /**
+         * Whether the box is visible in Sodium's culling result of the current renderer (its last main view render):
+         * frustum and occlusion culled, sections without geometry count as visible. True without Sodium.
+         */
+        public boolean isBoxVisible(double x1, double y1, double z1, double x2, double y2, double z2) {
+            return true;
+        }
+
         public void onClientChunkUnloaded(ClientLevel world, int chunkX, int chunkZ) {
         
         }

@@ -33,7 +33,12 @@ import java.util.concurrent.Future;
  * Whenever that can't be decided reliably, the portal is rendered.
  * <p>
  * Only for portals seen from the main view: portal views don't update the graph (see MixinLevelRenderer).
- * Not with Sodium, which replaces the vanilla graph.
+ * <p>
+ * With Sodium, which replaces the vanilla graph: Sodium's culling result of the main view (frustum and occlusion,
+ * {@code SodiumWorldRenderer.isBoxVisible}). Portal views don't change it (MixinSodiumRenderSectionManager), but it is
+ * from the last frame or older (Sodium culls asynchronously), with the camera of then: a portal that just turned into
+ * view would count as hidden. So a portal is only skipped after it has been in the frustum for
+ * {@link #SODIUM_IN_VIEW_FRAMES} frames in a row.
  */
 @Environment(EnvType.CLIENT)
 public class PortalOcclusionCulling {
@@ -43,6 +48,8 @@ public class PortalOcclusionCulling {
     private static final int MAX_SECTIONS = 64;
     // a portal found visible keeps being rendered for this many frames (partial graph updates can't make it flicker)
     private static final int KEEP_VISIBLE_FRAMES = 10;
+    // with Sodium, a portal must have been in the frustum for this many frames before it can be skipped
+    private static final int SODIUM_IN_VIEW_FRAMES = 10;
 
     private static final BlockPos.MutableBlockPos tempPos = new BlockPos.MutableBlockPos();
 
@@ -50,14 +57,21 @@ public class PortalOcclusionCulling {
      * Must be called with the main view's state (before any portal view is set up).
      */
     public static boolean isHidden(Portal portal, Vec3 cameraPos) {
-        if (!IPCGlobal.cullHiddenPortals || SodiumInterface.invoker.isSodiumPresent()) {
+        if (!IPCGlobal.cullHiddenPortals) {
             return false;
         }
         if (portal.getIsGlobal()) {
             return false;
         }
 
+        // called each frame for the portals in the main view's frustum
         PortalRenderInfo renderInfo = PortalRenderInfo.get(portal);
+        int frame = RenderStates.frameIndex;
+        if (renderInfo.lastInFrustumFrame < frame - 1) {
+            renderInfo.inFrustumSinceFrame = frame;
+        }
+        renderInfo.lastInFrustumFrame = frame;
+
         if (whyVisible(portal, cameraPos) != null) {
             renderInfo.lastVisibleFrame = RenderStates.frameIndex;
             return false;
@@ -71,6 +85,10 @@ public class PortalOcclusionCulling {
     public static @Nullable String whyVisible(Portal portal, Vec3 cameraPos) {
         if (portal.getDistanceToNearestPointInPortal(cameraPos) < MIN_CULLING_DISTANCE) {
             return "near";
+        }
+
+        if (SodiumInterface.invoker.isSodiumPresent()) {
+            return whyVisibleWithSodium(portal);
         }
 
         LevelRenderer levelRenderer = Minecraft.getInstance().levelRenderer;
@@ -118,6 +136,21 @@ public class PortalOcclusionCulling {
                     }
                 }
             }
+        }
+        return null;
+    }
+
+    private static @Nullable String whyVisibleWithSodium(Portal portal) {
+        PortalRenderInfo renderInfo = PortalRenderInfo.get(portal);
+        if (RenderStates.frameIndex - renderInfo.inFrustumSinceFrame < SODIUM_IN_VIEW_FRAMES) {
+            return "just came into view";
+        }
+        AABB box = portal.getThinBoundingBox().inflate(0.5);
+        if ((box.getXsize() / 16 + 1) * (box.getYsize() / 16 + 1) * (box.getZsize() / 16 + 1) > MAX_SECTIONS) {
+            return "too many sections";
+        }
+        if (SodiumInterface.invoker.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ)) {
+            return "visible in Sodium's culling";
         }
         return null;
     }

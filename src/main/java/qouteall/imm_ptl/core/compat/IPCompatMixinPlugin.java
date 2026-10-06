@@ -40,6 +40,10 @@ public class IPCompatMixinPlugin implements IMixinConfigPlugin {
             return sodiumLoaded;
         }
         
+        if (mixinClassName.contains("EntityCulling")) {
+            return fabricLoader.isModLoaded("entityculling");
+        }
+        
         if (mixinClassName.contains("Flywheel")) {
             boolean flywheelLoaded = fabricLoader.isModLoaded("flywheel");
             return flywheelLoaded;

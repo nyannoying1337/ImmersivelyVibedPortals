@@ -13,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.ducks.IEClientWorld;
 import qouteall.imm_ptl.core.ducks.IECloudRenderer;
 import qouteall.imm_ptl.core.ducks.IEGameRenderer;
+import qouteall.imm_ptl.core.ducks.IELevelExtractor_Invalidation;
 import qouteall.imm_ptl.core.ducks.IELevelRenderer_ViewGrid;
 import qouteall.imm_ptl.core.ducks.IEMinecraftClient;
 import qouteall.q_misc_util.Helper;
@@ -144,6 +145,34 @@ public class DimensionRenderHelper {
         result.gridUsedFrame = frame;
         result.lastUsedFrame = frame;
         return result;
+    }
+
+    /**
+     * Carry out the "invalidate compiled geometry" requests of this renderer and its extra renderers that were
+     * postponed in the last frame, now, at the start of a frame, before any of them is used in it.
+     * See MixinLevelExtractor.modifyShouldInvalidate.
+     * The renderer is made the current one while doing it (other mods hook it, e.g. Sodium recreates its renderer).
+     */
+    public void processPostponedInvalidation() {
+        if (((IELevelExtractor_Invalidation) levelExtractor).ip_takePostponedInvalidation()) {
+            ClientLevel oldLevel = client.level;
+            LevelRenderer oldLevelRenderer = client.levelRenderer;
+            LevelExtractor oldLevelExtractor = client.levelExtractor;
+            client.level = world;
+            ((IEMinecraftClient) client).ip_setLevelRendererAndExtractor(levelRenderer, levelExtractor);
+            try {
+                levelRenderer.invalidateCompiledGeometry(
+                    world, client.options, client.gameRenderer.mainCamera(), client.getBlockColors()
+                );
+            }
+            finally {
+                ((IEMinecraftClient) client).ip_setLevelRendererAndExtractor(oldLevelRenderer, oldLevelExtractor);
+                client.level = oldLevel;
+            }
+        }
+        for (DimensionRenderHelper extra : extraHelpers) {
+            extra.processPostponedInvalidation();
+        }
     }
 
     private boolean gridCovers(SectionPos cameraSection) {

@@ -121,7 +121,9 @@ public class IPGlobal {
     public static boolean viewBobbingReduce = true;
     
     public static boolean enableClientPerformanceAdjustment = true;
-    public static boolean enableServerPerformanceAdjustment = true;
+    // FarPortalViewReuse
+    public static boolean reduceFarPortalUpdates = true;
+public static boolean enableServerPerformanceAdjustment = true;
     
     public static boolean enableCrossPortalSound = true;
     

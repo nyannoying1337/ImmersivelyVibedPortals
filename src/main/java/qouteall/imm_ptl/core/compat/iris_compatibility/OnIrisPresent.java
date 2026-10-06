@@ -18,6 +18,11 @@ public class OnIrisPresent extends IrisInterface.Invoker {
     }
     
     @Override
+    public boolean isShaderpackInUse() {
+        return net.irisshaders.iris.api.v0.IrisApi.getInstance().isShaderPackInUse();
+    }
+
+    @Override
     public boolean isRenderingShadowMap() {
         return ShadowRenderer.ACTIVE;
     }

@@ -5,8 +5,9 @@
 #include <minecraft:dynamictransforms.glsl>
 #include <minecraft:fog.glsl>
 
-// Draws a portal's surface. The content behind the portal was rendered into a
-// screen-sized target, which is sampled at this fragment's screen position.
+// Draws a portal's surface. The content behind the portal was rendered into a target, which is sampled
+// at this fragment's screen position. TextureMat maps that to the target's uv: the target covers only the
+// portal's rectangle of the screen, and mirrored views are flipped (see PortalViewCrop).
 
 layout(location = 0) in vec3 Position;
 
@@ -18,7 +19,7 @@ layout(location = 3) out float cylindricalVertexDistance;
 void main() {
     gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
 
-    texProj0 = projection_from_position(gl_Position);
+    texProj0 = TextureMat * projection_from_position(gl_Position);
 
     // Position is relative to the camera
     sphericalVertexDistance = fog_spherical_distance(Position);
