@@ -31,6 +31,9 @@
       "qouteall.imm_ptl.core.platform_specific.IPModEntryClient",
       "qouteall.q_misc_util.MiscUtilModEntryClient"
     ],
+    "sodium:config_api_user": [
+      "qouteall.imm_ptl.core.compat.sodium_compatibility.IPSodiumConfigEntryPoint"
+    ],
     "server": [
       "qouteall.imm_ptl.core.platform_specific.IPModEntryDedicatedServer"
     ],

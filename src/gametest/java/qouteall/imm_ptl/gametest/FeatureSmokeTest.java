@@ -1,6 +1,7 @@
 package qouteall.imm_ptl.gametest;
 
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestDedicatedServerContext;
@@ -41,6 +42,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Functional smoke tests for features that go through real game code paths:
@@ -184,6 +186,9 @@ public class FeatureSmokeTest implements FabricClientGameTest {
 
         section("first start screen", () -> initialScreen(ctx));
         section("config presets", () -> configPresets(ctx));
+        if (FabricLoader.getInstance().isModLoaded("sodium")) {
+            section("Sodium video settings page", () -> sodiumOptions(ctx));
+        }
 
         try (TestSingleplayerContext sp = ctx.worldBuilder()
             .adjustSettings(s -> s.setGameMode(WorldCreationUiState.SelectedGameMode.CREATIVE))
@@ -674,6 +679,86 @@ public class FeatureSmokeTest implements FabricClientGameTest {
         check("rotating portal: the camera turns upright after the animation", upLater > 0.99,
             String.format(Locale.ROOT, "camera up.y %.3f", upLater));
         screenshot(ctx, "rotating_portal_later");
+    }
+
+    /**
+     * The settings in Sodium's video settings screen (IPSodiumConfigEntryPoint, Sodium's config API): Sodium registered
+     * them, choosing a preset there and applying sets its settings (like the config screen), and the page opens.
+     * Sodium's classes are only reached by reflection (it's not on the test compile classpath).
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void sodiumOptions(ClientGameTestContext ctx) {
+        String result = ctx.computeOnClient(mc -> {
+            try {
+                Object config = Class.forName("net.caffeinemc.mods.sodium.client.config.ConfigManager").getField("CONFIG").get(null);
+                java.lang.reflect.Field modOptionsField = config.getClass().getDeclaredField("modOptions");
+                modOptionsField.setAccessible(true);
+                Object ours = null;
+                for (Object modOptions : (List<?>) modOptionsField.get(config)) {
+                    if (modOptions.getClass().getMethod("configId").invoke(modOptions).equals("immersive_portals")) {
+                        ours = modOptions;
+                    }
+                }
+                if (ours == null) {
+                    return "not registered";
+                }
+                java.lang.reflect.Field optionsField = config.getClass().getDeclaredField("options");
+                optionsField.setAccessible(true);
+                Map<net.minecraft.resources.Identifier, Object> options = (Map) optionsField.get(config);
+                Object preset = options.get(net.minecraft.resources.Identifier.fromNamespaceAndPath("immersive_portals", "preset"));
+                Object layer = options.get(net.minecraft.resources.Identifier.fromNamespaceAndPath("immersive_portals", "maxportallayer"));
+                java.lang.reflect.Method modify = preset.getClass().getMethod("modifyValue", Object.class);
+                java.lang.reflect.Method apply = config.getClass().getMethod("applyAllOptions");
+                java.lang.reflect.Method reset = config.getClass().getMethod("resetAllOptionsFromBindings");
+                java.lang.reflect.Method applied = layer.getClass().getMethod("getAppliedValue");
+
+                modify.invoke(preset, qouteall.imm_ptl.core.platform_specific.ConfigPreset.performance);
+                apply.invoke(config);
+                reset.invoke(config);
+                IPConfig c = IPConfig.getConfig();
+                String afterPerformance = c.preset + " layer " + c.maxPortalLayer + " running " + IPGlobal.maxPortalLayer
+                    + " shown " + applied.invoke(layer);
+
+                modify.invoke(preset, qouteall.imm_ptl.core.platform_specific.ConfigPreset.balanced);
+                apply.invoke(config);
+                reset.invoke(config);
+                String afterBalanced = c.preset + " layer " + c.maxPortalLayer + " shown " + applied.invoke(layer);
+                return afterPerformance + "; " + afterBalanced;
+            }
+            catch (ReflectiveOperationException e) {
+                return e.toString();
+            }
+        });
+        check("Sodium video settings: choosing a preset there and applying sets its settings",
+            result.equals("performance layer 2 running 2 shown 2; balanced layer 5 shown 5"), result);
+
+        // our page, opened directly
+        ctx.runOnClient(mc -> {
+            try {
+                Object config = Class.forName("net.caffeinemc.mods.sodium.client.config.ConfigManager").getField("CONFIG").get(null);
+                java.lang.reflect.Field modOptionsField = config.getClass().getDeclaredField("modOptions");
+                modOptionsField.setAccessible(true);
+                for (Object modOptions : (List<?>) modOptionsField.get(config)) {
+                    if (modOptions.getClass().getMethod("configId").invoke(modOptions).equals("immersive_portals")) {
+                        Object page = ((List<?>) modOptions.getClass().getMethod("pages").invoke(modOptions)).get(0);
+                        Class<?> screenClass = Class.forName("net.caffeinemc.mods.sodium.client.gui.VideoSettingsScreen");
+                        Class<?> pageClass = Class.forName("net.caffeinemc.mods.sodium.client.config.structure.OptionPage");
+                        mc.gui.setScreen((net.minecraft.client.gui.screens.Screen)
+                            screenClass.getMethod("createScreen", net.minecraft.client.gui.screens.Screen.class, pageClass)
+                                .invoke(null, new TitleScreen(), page));
+                    }
+                }
+            }
+            catch (ReflectiveOperationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        ctx.waitTicks(10);
+        String screen = ctx.computeOnClient(mc -> mc.gui.screen() == null ? "none" : mc.gui.screen().getClass().getSimpleName());
+        screenshot(ctx, "sodium_options");
+        check("Sodium video settings: our page opens", screen.equals("VideoSettingsScreen"), screen);
+        ctx.runOnClient(mc -> mc.gui.setScreen(new TitleScreen()));
+        ctx.waitForScreen(TitleScreen.class);
     }
 
     /**

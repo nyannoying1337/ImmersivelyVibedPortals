@@ -1,3 +1,8 @@
+**6.1.0-beta.12 — BETA: major issues may occur. Back up your worlds.**
+
+New
+- With Sodium, the main settings (preset, portals in portals, view distance, far portal updates, ...) are also in Sodium's Video Settings screen, on their own "Immersively Vibed Portals" page, with a button to all settings.
+
 **6.1.0-beta.11 — BETA: major issues may occur. Back up your worlds.**
 
 Fixes
