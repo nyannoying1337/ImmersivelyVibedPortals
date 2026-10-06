@@ -879,6 +879,22 @@ public class FeatureSmokeTest implements FabricClientGameTest {
                 String.format(Locale.ROOT, "rendered %d, reused %d", turning[0], turning[1]));
         }
 
+        // "Improved Transparency" (order-independent transparency): translucent terrain in view (water, stained
+        // glass) is drawn with OIT pipelines derived from the terrain pipelines, which include more uniform blocks
+        // (Sodium's terrain also gets minecraft:projection.glsl). Their compile failed with the clip plane in both
+        // blocks, and the game crashed ("Failed to find or load pipeline ... oit_depth_bounds_sodium_terrain").
+        srv.runCommand("fill 492 -26 486 500 -26 489 minecraft:water");
+        srv.runCommand("fill 504 -25 486 504 -23 489 minecraft:light_blue_stained_glass");
+        ctx.runOnClient(mc -> mc.options.improvedTransparency().set(true));
+        ctx.waitTicks(60);
+        long[] oit = countViews(ctx, 20);
+        screenshot(ctx, "improved_transparency");
+        ctx.runOnClient(mc -> mc.options.improvedTransparency().set(false));
+        ctx.waitTicks(20);
+        check("improved transparency: translucent terrain and the portal view render (no crash)", oit[0] > 0,
+            String.format(Locale.ROOT, "views %d", oit[0]));
+        srv.runCommand("fill 486 -26 486 522 -23 489 minecraft:air");
+
         srv.runOnServer(s -> {
             for (Portal p : s.overworld().getEntitiesOfClass(Portal.class, new AABB(510, -40, 470, 530, -10, 500))) {
                 p.discard();

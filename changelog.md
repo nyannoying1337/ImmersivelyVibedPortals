@@ -8,12 +8,10 @@ New
 - Config presets: Performance, Balanced (the defaults), Quality and Custom, at the top of the config screen. A preset sets the settings that cost the most performance (portals inside portals, portal view distance, terrain loaded behind distant portals, showing yourself in portals, loading less at low FPS); changing one of them by hand makes it Custom.
 
 Fixes
+- Fixed a crash with Sodium and "Improved Transparency" (Video Settings) when water or other translucent blocks are in view ("Failed to find or load pipeline ... oit_depth_bounds_sodium_terrain").
 - Fixed a disconnect ("Network Protocol Error") when changing dimension (e.g. with /tp or /execute in another dimension) while looking at a portal.
 - Fixed a crash with Sodium or Iris right after changing dimension ("Cannot wait on a fence for the current submit").
 - The "You are using Nvidia videocard" chat warning only shows with the OpenGL backend (the driver issue it links to is OpenGL-only).
 - Fixed a crash "Frame not in use" after an error while rendering a portal view (the error is now only logged).
 - Sodium: portal views of the dimension you just left could stay without terrain (depending on timing).
 - Shaderpacks: portal views no longer get thick cave fog (the light at the eyes was measured at the player's position in the other dimension).
-
-Known issue
-- NVIDIA graphics cards with "Improved Transparency" (Video Settings) turned on: crashes ("Failed to find or load pipeline ... oit_depth_bounds ...") and terrain missing around portals. Turn Improved Transparency off for now.

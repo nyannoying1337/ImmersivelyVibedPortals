@@ -99,6 +99,11 @@ public class PortalClipping {
         );
     }
 
+    // The plane's name in Sodium's u_Globals block. A shader can include both blocks (Sodium's terrain with
+    // "Improved Transparency" also includes minecraft:projection.glsl), and both are nameless (their members are
+    // global), so the names must differ.
+    private static final String SODIUM_CLIP_PLANE = "ImmPtlSodiumClipPlane";
+
     /**
      * Sodium's terrain shaders read their uniforms from the u_Globals block (sodium:globals.glsl);
      * the plane is appended to it, and Sodium's writer is extended accordingly (MixinSodiumGlobalUniforms).
@@ -106,7 +111,7 @@ public class PortalClipping {
     public static String transformSodiumGlobalsInclude(String source) {
         return source.replaceFirst(
             "(uniform\\s+u_Globals\\s*\\{[^}]*?)(\\s*\\};)",
-            "$1\n    vec4 ImmPtlClipPlane;$2"
+            "$1\n    vec4 " + SODIUM_CLIP_PLANE + ";$2"
         );
     }
 
@@ -257,12 +262,13 @@ public class PortalClipping {
     }
 
     public static String transformVertexShader(Identifier vertexShaderId, String source) {
+        String planeName = vertexShaderId.getNamespace().equals("sodium") ? SODIUM_CLIP_PLANE : "ImmPtlClipPlane";
         Matcher matcher = getGlPositionPattern(vertexShaderId).matcher(source);
         StringBuilder sb = new StringBuilder();
         while (matcher.find()) {
             String viewPosExpr = matcher.group(1);
             matcher.appendReplacement(sb, Matcher.quoteReplacement(
-                matcher.group(0) + "\n    immptl_ClipDistance = dot(ImmPtlClipPlane, " + viewPosExpr + ");"
+                matcher.group(0) + "\n    immptl_ClipDistance = dot(" + planeName + ", " + viewPosExpr + ");"
             ));
         }
         matcher.appendTail(sb);
